@@ -4,35 +4,24 @@ Role-based access control shared by every service.
 Visibility rules for projects (and everything that hangs off a project):
 - admin:    every project
 - manager:  projects they manage
-- employee: projects they are currently assigned to
+- employee: projects they hold a (non-archived) assignment on
 
-Projects that are not visible to a caller are reported as 404 so their
-existence is not leaked.
+Projects that are not visible to a caller are reported as 404 so ids cannot
+be probed.
 """
 
 from .errors import conflict, forbidden, not_found
+from .projects import get_project
 
 ADMIN = "admin"
 MANAGER = "manager"
 EMPLOYEE = "employee"
-
-PROJECT_SELECT = """
-    SELECT p.*,
-           CASE WHEN m.id IS NULL THEN NULL ELSE m.first_name || ' ' || m.last_name END AS manager_name
-    FROM projects p
-    LEFT JOIN users m ON m.id = p.manager_id
-"""
 
 
 def require_role(user: dict, *roles: str) -> None:
     """Raise 403 unless the user has one of the given roles."""
     if user["role"] not in roles:
         raise forbidden()
-
-
-def is_admin(user: dict) -> bool:
-    """True for admins."""
-    return user["role"] == ADMIN
 
 
 def visible_project_ids(user: dict) -> tuple[str, list] | None:
@@ -44,7 +33,8 @@ def visible_project_ids(user: dict) -> tuple[str, list] | None:
         return None
     if user["role"] == MANAGER:
         return "SELECT id FROM projects WHERE manager_id = %s", [user["id"]]
-    return "SELECT project_id FROM project_assignments WHERE user_id = %s", [user["id"]]
+    return ("SELECT project_id FROM project_assignments WHERE user_id = %s AND NOT is_archived",
+            [user["id"]])
 
 
 def can_view_project(cur, user: dict, project: dict) -> bool:
@@ -54,7 +44,7 @@ def can_view_project(cur, user: dict, project: dict) -> bool:
     if user["role"] == MANAGER:
         return project["manager_id"] == user["id"]
     cur.execute(
-        "SELECT 1 FROM project_assignments WHERE project_id = %s AND user_id = %s",
+        "SELECT 1 FROM project_assignments WHERE project_id = %s AND user_id = %s AND NOT is_archived",
         [project["id"], user["id"]],
     )
     return cur.fetchone() is not None
@@ -65,17 +55,9 @@ def can_manage_project(user: dict, project: dict) -> bool:
     return user["role"] == ADMIN or (user["role"] == MANAGER and project["manager_id"] == user["id"])
 
 
-def get_project(cur, project_id: int, lock: bool = False) -> dict | None:
-    """Fetch a project with its manager name, optionally locking the row."""
-    if lock:
-        cur.execute("SELECT id FROM projects WHERE id = %s FOR UPDATE", [project_id])
-    cur.execute(PROJECT_SELECT + " WHERE p.id = %s", [project_id])
-    return cur.fetchone()
-
-
-def load_visible_project(cur, user: dict, project_id: int) -> dict:
+def load_visible_project(cur, user: dict, project_id: int, lock: bool = False) -> dict:
     """Return a project the user may view, else raise 404."""
-    project = get_project(cur, project_id)
+    project = get_project(cur, project_id, lock=lock)
     if project is None or not can_view_project(cur, user, project):
         raise not_found("Project")
     return project

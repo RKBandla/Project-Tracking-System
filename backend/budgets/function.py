@@ -1,147 +1,124 @@
 """
-Budgets service: planned vs actual budget line items per project.
+Budgets service: one budget per project, compared with planned and consumed cost.
+
+    hourly rate   = annual salary / 2080
+    planned cost  = sum(hours per week x weeks in assignment x hourly rate)
+    consumed cost = sum(approved logged hours x hourly rate)
 
 Routes (relative to /api/budgets):
-    GET    /        list budget items with totals (admin, managers for their projects)
-    POST   /        create budget item
-    GET    /{id}    view budget item
-    PUT    /{id}    update budget item
-    DELETE /{id}    delete budget item
+    GET /         budgets of visible projects (search, at-risk filter, pagination)
+    GET /{id}     one project's budget, with per-person breakdown for admins and its manager
+    PUT /{id}     set the budget {budget_cents} (admin, or the project's manager)
 
-Employees have no access to budget data. Items on archived projects are read-only.
+All amounts are whole cents. Employees see totals for projects they are assigned
+to, but never per-person costs (they reveal salaries).
 """
 
 from shared import audit
 from shared.app import make_handler
-from shared.errors import bad_request, not_found
+from shared.errors import bad_request
 from shared.http import Request, Router, response
-from shared.query import Filters, choice_param, date_param, int_param, order_by, paginated
-from shared.rbac import ADMIN, MANAGER, load_managed_project, require_role, visible_project_ids
-from shared.schema import BUDGET_CATEGORIES
+from shared.projects import CONSUMED_COST_SQL, PLANNED_COST_SQL, PROJECT_SELECT, get_project, present_project
+from shared.query import Filters, choice_param, order_by, paginated
+from shared.rbac import can_manage_project, load_managed_project, load_visible_project, visible_project_ids
 from shared.validation import Field, validate
 
 router = Router()
 
-FIELDS = {
-    "category": Field(required=True, choices=BUDGET_CATEGORIES),
-    "description": Field(required=True, max_length=255),
-    "planned_amount": Field(kind="decimal", min_value=0, max_value=999_999_999_999),
-    "actual_amount": Field(kind="decimal", min_value=0, max_value=999_999_999_999),
-    "entry_date": Field(kind="date"),
-}
-CREATE_SCHEMA = {"project_id": Field(kind="int", required=True, min_value=1), **FIELDS}
-
-SELECT = """
-    SELECT b.*, p.code AS project_code, p.name AS project_name, p.is_archived AS project_is_archived
-    FROM budget_items b
-    JOIN projects p ON p.id = b.project_id
-"""
-SORTS = {"entry_date": "entry_date", "category": "category", "description": "description",
-         "planned_amount": "planned_amount", "actual_amount": "actual_amount", "created_at": "created_at"}
+BUDGET_SCHEMA = {"budget_cents": Field(kind="int", required=True, min_value=0, max_value=10**14)}
+SORTS = {"name": "name", "code": "code", "budget_cents": "budget_cents", "planned_cents": "planned_cents",
+         "consumed_cents": "consumed_cents", "end_date": "end_date"}
+FIELDS = ("id", "code", "name", "status", "start_date", "end_date", "manager_id", "manager_name", "is_archived",
+          "budget_cents", "planned_cents", "consumed_cents", "consumed_share", "elapsed_share", "over_burn",
+          "at_risk", "risk_reasons")
 
 
-def _scope(user: dict, filters: Filters) -> Filters:
-    """Restrict to items on projects the user manages (all for admins)."""
-    require_role(user, ADMIN, MANAGER)
-    visible = visible_project_ids(user)
-    if visible is not None:
-        sql, params = visible
-        filters.add(f"project_id IN ({sql})", *params)
-    return filters
-
-
-def _load(cur, user: dict, item_id: int) -> dict:
-    """Fetch a visible budget item or raise 404."""
-    filters = _scope(user, Filters()).eq("id", item_id)
-    cur.execute(f"SELECT * FROM ({SELECT}) AS t {filters.where()}", filters.params)  # nosec B608
-    row = cur.fetchone()
-    if row is None:
-        raise not_found("Budget item")
-    return row
+def _summary(project: dict) -> dict:
+    """Budget figures for one project."""
+    data = {k: project[k] for k in FIELDS}
+    data["remaining_cents"] = project["budget_cents"] - project["consumed_cents"]
+    data["unplanned_cents"] = project["budget_cents"] - project["planned_cents"]
+    return data
 
 
 @router.get("/")
-def list_items(request: Request, cur) -> dict:
-    """List budget items with planned/actual totals for the current filter."""
+def list_budgets(request: Request, cur) -> dict:
+    """Budget vs planned vs consumed for every visible project."""
     user, q = request.user, request.query
-    filters = _scope(user, Filters())
-    filters.eq("project_id", int_param(q, "project_id"))
-    filters.eq("category", choice_param(q, "category", BUDGET_CATEGORIES))
-    filters.search(["description", "project_name", "project_code"], q.get("q"))
-    date_from = date_param(q, "date_from")
-    if date_from:
-        filters.add("entry_date >= %s", date_from)
-    date_to = date_param(q, "date_to")
-    if date_to:
-        filters.add("entry_date <= %s", date_to)
-    result = paginated(cur, SELECT, filters, order_by(q, SORTS, "-entry_date"), q)
-    cur.execute(
-        f"""SELECT COALESCE(SUM(planned_amount), 0) AS planned, COALESCE(SUM(actual_amount), 0) AS actual
-            FROM ({SELECT}) AS t {filters.where()}""",  # nosec B608
-        filters.params,
-    )
-    result["totals"] = cur.fetchone()
+    filters = Filters()
+    visible = visible_project_ids(user)
+    if visible is not None:
+        sql, params = visible
+        filters.add(f"id IN ({sql})", *params)
+    archived = choice_param(q, "archived", ("true", "false", "all")) or "false"
+    if archived != "all":
+        filters.eq("is_archived", archived == "true")
+    filters.search(["name", "code", "manager_name"], q.get("q"))
+    if choice_param(q, "over_burn", ("true", "false")) == "true":
+        filters.add("over_burn")
+    result = paginated(cur, PROJECT_SELECT, filters, order_by(q, SORTS, "name"), q)
+    result["items"] = [_summary(present_project(p)) for p in result["items"]]
     return response(200, result)
 
 
-@router.post("/")
-def create_item(request: Request, cur) -> dict:
-    """Add a budget item to a managed project."""
-    user = request.user
-    _scope(user, Filters())
-    data = validate(request.body, CREATE_SCHEMA)
-    project = load_managed_project(cur, user, data["project_id"])
-    cur.execute(
-        """
-        INSERT INTO budget_items (project_id, category, description, planned_amount, actual_amount,
-                                  entry_date, created_by)
-        VALUES (%s, %s, %s, %s, %s, COALESCE(%s, CURRENT_DATE), %s) RETURNING id
-        """,
-        [project["id"], data["category"], data["description"], data["planned_amount"] or 0,
-         data["actual_amount"] or 0, data["entry_date"], user["id"]],
-    )
-    item_id = cur.fetchone()["id"]
-    audit.record(cur, user["id"], "budget_item", item_id, "create", data)
-    return response(201, _load(cur, user, item_id))
-
-
 @router.get("/{id}")
-def get_one(request: Request, cur) -> dict:
-    """View a budget item."""
-    return response(200, _load(cur, request.user, request.params["id"]))
+def get_budget(request: Request, cur) -> dict:
+    """One project's budget; admins and its manager also get per-person and per-week breakdowns."""
+    user = request.user
+    project = present_project(load_visible_project(cur, user, request.params["id"]))
+    result = _summary(project)
+    if can_manage_project(user, project):
+        cur.execute(
+            f"""SELECT u.id AS user_id, u.first_name || ' ' || u.last_name AS full_name, u.job_title,
+                       SUM({PLANNED_COST_SQL})::bigint AS planned_cents,
+                       SUM(a.hours_per_week * ((a.end_date - a.start_date + 1) / 7.0))::numeric(10,1) AS planned_hours
+                FROM project_assignments a JOIN users u ON u.id = a.user_id
+                WHERE a.project_id = %s AND NOT a.is_archived
+                GROUP BY u.id ORDER BY full_name""",  # nosec B608 - constant SQL fragments
+            [project["id"]],
+        )
+        people = {r["user_id"]: {**r, "consumed_cents": 0, "approved_hours": 0} for r in cur.fetchall()}
+        cur.execute(
+            f"""SELECT u.id AS user_id, u.first_name || ' ' || u.last_name AS full_name, u.job_title,
+                       SUM({CONSUMED_COST_SQL})::bigint AS consumed_cents, SUM(t.hours) AS approved_hours
+                FROM time_entries t JOIN users u ON u.id = t.user_id
+                WHERE t.project_id = %s AND t.status = 'approved'
+                GROUP BY u.id""",  # nosec B608
+            [project["id"]],
+        )
+        for row in cur.fetchall():
+            person = people.setdefault(row["user_id"], {**row, "planned_cents": 0, "planned_hours": 0})
+            person["consumed_cents"] = row["consumed_cents"]
+            person["approved_hours"] = row["approved_hours"]
+        result["people"] = sorted(people.values(), key=lambda p: p["full_name"])
+        cur.execute(
+            f"""SELECT date_trunc('month', t.work_date)::date AS month,
+                       SUM({CONSUMED_COST_SQL})::bigint AS consumed_cents, SUM(t.hours) AS hours
+                FROM time_entries t JOIN users u ON u.id = t.user_id
+                WHERE t.project_id = %s AND t.status = 'approved'
+                GROUP BY 1 ORDER BY 1""",  # nosec B608
+            [project["id"]],
+        )
+        result["by_month"] = cur.fetchall()
+    return response(200, result)
 
 
 @router.put("/{id}")
-def update_item(request: Request, cur) -> dict:
-    """Update a budget item on a managed project."""
+def set_budget(request: Request, cur) -> dict:
+    """Set a project's budget (admin, or the project's manager)."""
     user = request.user
-    row = _load(cur, user, request.params["id"])
-    load_managed_project(cur, user, row["project_id"])
-    data = validate(request.body, FIELDS, partial=True)
-    if not data:
-        raise bad_request("Nothing to update")
-    missing = {k: "is required" for k, v in data.items() if v is None}
-    if missing:
-        raise bad_request("Validation failed", missing)
-    changes = audit.diff(row, data)
-    if changes:
-        assignments = ", ".join(f"{name} = %s" for name in data)
-        cur.execute(f"UPDATE budget_items SET {assignments}, updated_at = now() WHERE id = %s",  # nosec B608
-                    [*data.values(), row["id"]])
-        audit.record(cur, user["id"], "budget_item", row["id"], "update", changes)
-    return response(200, _load(cur, user, row["id"]))
-
-
-@router.delete("/{id}")
-def delete_item(request: Request, cur) -> dict:
-    """Delete a budget item on a managed project."""
-    user = request.user
-    row = _load(cur, user, request.params["id"])
-    load_managed_project(cur, user, row["project_id"])
-    cur.execute("DELETE FROM budget_items WHERE id = %s", [row["id"]])
-    audit.record(cur, user["id"], "budget_item", row["id"], "delete",
-                 {"project_id": row["project_id"], "description": row["description"]})
-    return response(204)
+    project = load_managed_project(cur, user, request.params["id"])
+    data = validate(request.body, BUDGET_SCHEMA)
+    if data["budget_cents"] is None:
+        raise bad_request("Validation failed", {"budget_cents": "is required"})
+    if data["budget_cents"] != project["budget_cents"]:
+        cur.execute("UPDATE projects SET budget_cents = %s, updated_at = now() WHERE id = %s",
+                    [data["budget_cents"], project["id"]])
+        audit.record(cur, user, "project", project["id"], "update",
+                     f"set the budget of {project['code']} {project['name']} to "
+                     f"${data['budget_cents'] / 100:,.2f}",
+                     {"budget_cents": {"from": project["budget_cents"], "to": data["budget_cents"]}})
+    return response(200, _summary(present_project(get_project(cur, project["id"]))))
 
 
 handler = make_handler(router, "budgets")

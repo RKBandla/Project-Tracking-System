@@ -51,6 +51,7 @@ locals {
     POSTGRES_USER     = local.is_local ? "postgres" : try(one(aws_rds_cluster.this.*.master_username), "")
     POSTGRES_PASS     = local.is_local ? "postgres123" : try(one(aws_rds_cluster.this.*.master_password), "")
     JWT_SECRET        = random_password.jwt_secret.result
+    ADMIN_EMAIL       = var.admin_email
     ADMIN_EMPLOYEE_ID = var.admin_employee_id
     ADMIN_PASSWORD    = random_password.admin.result
   }

@@ -41,9 +41,9 @@ output "website_url" {
   value       = data.aws_caller_identity.this.id == "000000000000" ? "http://${aws_s3_bucket.this.bucket}.s3-website.localhost.localstack.cloud:4566" : try("https://${one(aws_cloudfront_distribution.this.*.domain_name)}", null)
 }
 
-output "admin_employee_id" {
-  description = "Employee ID of the seeded admin account"
-  value       = var.admin_employee_id
+output "admin_email" {
+  description = "Login email of the seeded admin account"
+  value       = var.admin_email
 }
 
 output "admin_password" {
