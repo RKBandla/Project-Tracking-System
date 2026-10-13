@@ -135,6 +135,13 @@ terraform output admin_email            # admin@pts.local
 terraform output -raw admin_password    # generated 6-character password
 ```
 
+To fill the app with demo data (two managers, four employees, three projects in different states, bookings,
+dependencies, logged and approved hours) and print everyone's sign-in details:
+
+```bash
+./bin/seed-demo.py --url http://localhost:3001 --admin-password "$(terraform -chdir=infra output -raw admin_password)"
+```
+
 After changing backend code, run `./bin/sync-shared.sh` (LocalStack hot-reloads the service folders).
 
 ## Tests
