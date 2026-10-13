@@ -10,6 +10,7 @@ import importlib
 import importlib.util
 import json
 import os
+from datetime import date, timedelta
 import sys
 from pathlib import Path
 
@@ -17,8 +18,9 @@ import psycopg
 import pytest
 
 BACKEND_DIR = Path(__file__).resolve().parent.parent
+TODAY = date.today()
 TEST_DB = os.getenv("PTS_TEST_DB", "pts_test")
-ADMIN_EMPLOYEE_ID = "ADMIN001"
+ADMIN_EMAIL = "admin@pts.test"
 ADMIN_PASSWORD = "Adm1n1"
 
 os.environ.update({
@@ -29,7 +31,8 @@ os.environ.update({
     "POSTGRES_PASS": os.getenv("POSTGRES_PASS", "postgres123"),
     "POSTGRES_NAME": TEST_DB,
     "JWT_SECRET": "test-secret-for-unit-tests-only-0123456789",
-    "ADMIN_EMPLOYEE_ID": ADMIN_EMPLOYEE_ID,
+    "ADMIN_EMAIL": ADMIN_EMAIL,
+    "ADMIN_EMPLOYEE_ID": "ADMIN001",
     "ADMIN_PASSWORD": ADMIN_PASSWORD,
 })
 
@@ -46,9 +49,10 @@ _original_hash = auth.hash_password
 auth.hash_password = lambda password, iterations=1_000: _original_hash(password, iterations)
 schema.hash_password = auth.hash_password
 
-SERVICES = ("auth", "users", "projects", "project-requests", "assignments", "deliverables", "budgets")
-TABLES = ("audit_log", "budget_items", "deliverables", "project_assignments", "project_requests",
-          "projects", "users")
+SERVICES = ("auth", "users", "projects", "project-requests", "assignments", "deliverables", "budgets",
+            "timesheets", "activity")
+TABLES = ("notifications", "audit_log", "time_entries", "deliverable_dependencies", "deliverables",
+          "project_assignments", "project_requests", "projects", "users")
 
 
 def _load_service(name: str):
@@ -124,9 +128,9 @@ class Api:
         }
         return Response(HANDLERS[service](event, None))
 
-    def login(self, employee_id: str, password: str) -> str:
+    def login(self, email: str, password: str) -> str:
         """Log in and return an access token."""
-        res = self.call("auth", "POST", "/login", {"employee_id": employee_id, "password": password})
+        res = self.call("auth", "POST", "/login", {"email": email, "password": password})
         assert res.status == 200, res
         return res.json["access_token"]
 
@@ -140,7 +144,7 @@ def api() -> Api:
 @pytest.fixture
 def admin(api):  # pylint: disable=redefined-outer-name
     """The seeded admin: dict with token and id."""
-    token = api.login(ADMIN_EMPLOYEE_ID, ADMIN_PASSWORD)
+    token = api.login(ADMIN_EMAIL, ADMIN_PASSWORD)
     me = api.call("auth", "GET", "/me", token=token).json
     return {**me, "token": token, "password": ADMIN_PASSWORD}
 
@@ -158,14 +162,14 @@ def make_user(api, admin):  # pylint: disable=redefined-outer-name
             "last_name": extra.pop("last_name", f"Last{n}"),
             "email": extra.pop("email", f"user{n}@example.com"),
             "job_title": extra.pop("job_title", "Engineer"),
-            "salary": extra.pop("salary", 50000),
+            "salary_cents": extra.pop("salary_cents", 10_400_000),  # $104,000 -> $50/h
             "role": role,
             "manager_id": manager_id,
             **extra,
         }
         res = api.call("users", "POST", "/", body, token=admin["token"])
         assert res.status == 201, res
-        token = api.login(res.json["employee_id"], res.json["temporary_password"])
+        token = api.login(res.json["user"]["email"], res.json["temporary_password"])
         return {**res.json["user"], "token": token, "password": res.json["temporary_password"]}
 
     return factory
@@ -176,9 +180,32 @@ def project_factory(api, admin):  # pylint: disable=redefined-outer-name
     """Factory creating a project as admin."""
 
     def factory(manager_id: int | None = None, **fields) -> dict:
-        body = {"name": fields.pop("name", "Apollo"), "manager_id": manager_id, **fields}
+        body = {"name": fields.pop("name", "Apollo"), "manager_id": manager_id,
+                "start_date": fields.pop("start_date", str(TODAY - timedelta(days=28))),
+                "end_date": fields.pop("end_date", str(TODAY + timedelta(days=84))), **fields}
         res = api.call("projects", "POST", "/", body, token=admin["token"])
         assert res.status == 201, res
         return res.json
+
+    return factory
+
+
+def monday(offset_weeks: int = 0) -> date:
+    """Monday of the current week, shifted by whole weeks."""
+    return TODAY - timedelta(days=TODAY.weekday()) + timedelta(weeks=offset_weeks)
+
+
+@pytest.fixture
+def assign(api):  # pylint: disable=redefined-outer-name
+    """Book a person onto a project (defaults: this week through 4 weeks later)."""
+
+    def factory(token: str, project: dict, person: dict, hours: int, start: date | None = None,
+                end: date | None = None, **extra) -> "Response":
+        start = start or monday()
+        end = end or (start + timedelta(weeks=4, days=-1))
+        return api.call("assignments", "POST", "/", {
+            "project_id": project["id"], "user_id": person["id"], "hours_per_week": hours,
+            "start_date": str(start), "end_date": str(end), **extra,
+        }, token=token)
 
     return factory

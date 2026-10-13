@@ -50,3 +50,9 @@ variable "admin_employee_id" {
   type        = string
   default     = "ADMIN001"
 }
+
+variable "admin_email" {
+  description = "Email (login) of the admin account seeded on first start."
+  type        = string
+  default     = "admin@pts.local"
+}

@@ -197,7 +197,7 @@ class TestHttp:
 
 
 class TestUserSerialisation:
-    USER = {"id": 5, "first_name": "A", "last_name": "B", "salary": 10, "manager_id": 2,
+    USER = {"id": 5, "first_name": "A", "last_name": "B", "salary_cents": 10, "manager_id": 2,
             "password_hash": "secret", "role": "employee"}
 
     @pytest.mark.parametrize("viewer,sees", [
@@ -210,6 +210,6 @@ class TestUserSerialisation:
     def test_salary_visibility(self, viewer, sees):
         assert can_view_salary(viewer, self.USER) is sees
         data = serialize_user(self.USER, viewer)
-        assert ("salary" in data) is sees
+        assert ("salary_cents" in data) is sees
         assert "password_hash" not in data
         assert data["full_name"] == "A B"

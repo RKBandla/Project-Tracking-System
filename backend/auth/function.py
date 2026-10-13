@@ -1,23 +1,23 @@
 """
-Auth service: log in with employee ID and password, refresh tokens, current user.
+Auth service: log in with email and password, refresh tokens, current user.
 
 Routes (relative to /api/auth):
-    POST /login     {employee_id, password}  -> tokens + user   (public)
-    POST /refresh   {refresh_token}          -> tokens + user   (public)
-    GET  /me                                 -> current user
+    POST /login     {email, password}   -> tokens + user   (public)
+    POST /refresh   {refresh_token}     -> tokens + user   (public)
+    GET  /me                            -> current user
 """
 
 from shared.app import make_handler
 from shared.auth import decode_token, issue_tokens, verify_password
 from shared.errors import unauthorized
 from shared.http import Request, Router, response
-from shared.users import get_user, get_user_by_employee_id, serialize_user
+from shared.users import get_user, get_user_by_email, serialize_user
 from shared.validation import Field, validate
 
 router = Router()
 
 LOGIN_SCHEMA = {
-    "employee_id": Field(required=True, max_length=20),
+    "email": Field(kind="email", required=True),
     "password": Field(required=True, max_length=128),
 }
 REFRESH_SCHEMA = {"refresh_token": Field(required=True, max_length=2048)}
@@ -30,11 +30,11 @@ def _session(user: dict) -> dict:
 
 @router.post("/login", public=True)
 def login(request: Request, cur) -> dict:
-    """Authenticate with employee ID and password."""
+    """Authenticate with email and password."""
     data = validate(request.body, LOGIN_SCHEMA)
-    user = get_user_by_employee_id(cur, data["employee_id"])
+    user = get_user_by_email(cur, data["email"])
     if user is None or not verify_password(data["password"], user["password_hash"]):
-        raise unauthorized("Invalid employee ID or password")
+        raise unauthorized("Invalid email or password")
     if not user["is_active"]:
         raise unauthorized("Account is inactive; contact an administrator")
     return response(200, _session(user))

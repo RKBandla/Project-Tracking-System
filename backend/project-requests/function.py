@@ -15,9 +15,9 @@ from shared import audit
 from shared.app import make_handler
 from shared.errors import bad_request, conflict, forbidden, not_found
 from shared.http import Request, Router, response
-from shared.projects import insert_project
+from shared.projects import get_project, insert_project, present_project
 from shared.query import Filters, choice_param, int_param, order_by, paginated
-from shared.rbac import ADMIN, MANAGER, get_project, require_role
+from shared.rbac import ADMIN, MANAGER, require_role
 from shared.schema import REQUEST_STATUSES
 from shared.users import get_user
 from shared.validation import Field, check_date_range, validate
@@ -30,7 +30,7 @@ REQUEST_SCHEMA = {
     "justification": Field(kind="text", max_length=5000),
     "proposed_start_date": Field(kind="date", nullable=True),
     "proposed_end_date": Field(kind="date", nullable=True),
-    "proposed_budget": Field(kind="decimal", min_value=0, max_value=999_999_999_999),
+    "proposed_budget_cents": Field(kind="int", min_value=0, max_value=10**14),
 }
 REVIEW_SCHEMA = {"review_note": Field(kind="text", max_length=2000)}
 
@@ -45,7 +45,7 @@ SELECT = """
     LEFT JOIN projects p ON p.id = r.project_id
 """
 SORTS = {"created_at": "created_at", "name": "name", "status": "status",
-         "proposed_budget": "proposed_budget", "proposed_start_date": "proposed_start_date"}
+         "proposed_budget_cents": "proposed_budget_cents", "proposed_start_date": "proposed_start_date"}
 
 
 def _load(cur, user: dict, request_id: int, lock: bool = False) -> dict:
@@ -98,14 +98,14 @@ def create_request(request: Request, cur) -> dict:
     cur.execute(
         """
         INSERT INTO project_requests (requested_by, name, description, justification,
-                                      proposed_start_date, proposed_end_date, proposed_budget)
+                                      proposed_start_date, proposed_end_date, proposed_budget_cents)
         VALUES (%s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         [user["id"], data["name"], data["description"] or "", data["justification"] or "",
-         data["proposed_start_date"], data["proposed_end_date"], data["proposed_budget"] or 0],
+         data["proposed_start_date"], data["proposed_end_date"], data["proposed_budget_cents"] or 0],
     )
     request_id = cur.fetchone()["id"]
-    audit.record(cur, user["id"], "project_request", request_id, "create", data)
+    audit.record(cur, user, "project_request", request_id, "create", f"requested project {data['name']}", data)
     return response(201, _reload(cur, request_id))
 
 
@@ -131,15 +131,16 @@ def update_request(request: Request, cur) -> dict:
     for text in ("description", "justification"):
         if text in data and data[text] is None:
             data[text] = ""
-    if "proposed_budget" in data and data["proposed_budget"] is None:
-        data["proposed_budget"] = 0
+    if "proposed_budget_cents" in data and data["proposed_budget_cents"] is None:
+        data["proposed_budget_cents"] = 0
     check_date_range(data.get("proposed_start_date", row["proposed_start_date"]),
                      data.get("proposed_end_date", row["proposed_end_date"]),
                      "proposed_start_date", "proposed_end_date")
     assignments = ", ".join(f"{name} = %s" for name in data)
     cur.execute(f"UPDATE project_requests SET {assignments}, updated_at = now() WHERE id = %s",  # nosec B608
                 [*data.values(), row["id"]])
-    audit.record(cur, user["id"], "project_request", row["id"], "update", audit.diff(row, data))
+    audit.record(cur, user, "project_request", row["id"], "update",
+                 f"updated project request {row['name']}", audit.diff(row, data))
     return response(200, _reload(cur, row["id"]))
 
 
@@ -152,7 +153,7 @@ def withdraw(request: Request, cur) -> dict:
         raise forbidden("Only the requester can withdraw a request")
     _require_pending(row)
     cur.execute("UPDATE project_requests SET status = 'withdrawn', updated_at = now() WHERE id = %s", [row["id"]])
-    audit.record(cur, user["id"], "project_request", row["id"], "withdraw")
+    audit.record(cur, user, "project_request", row["id"], "archive", f"withdrew project request {row['name']}")
     return response(200, _reload(cur, row["id"]))
 
 
@@ -172,7 +173,7 @@ def approve(request: Request, cur) -> dict:
         "description": row["description"],
         "start_date": row["proposed_start_date"],
         "end_date": row["proposed_end_date"],
-        "budget_total": row["proposed_budget"],
+        "budget_cents": row["proposed_budget_cents"],
         "manager_id": row["requested_by"],
     })
     cur.execute(
@@ -180,9 +181,10 @@ def approve(request: Request, cur) -> dict:
                   review_note = %s, project_id = %s, updated_at = now() WHERE id = %s""",
         [user["id"], note, project_id, row["id"]],
     )
-    audit.record(cur, user["id"], "project", project_id, "create", {"from_request": row["id"]})
-    audit.record(cur, user["id"], "project_request", row["id"], "approve", {"project_id": project_id})
-    return response(200, {"request": _reload(cur, row["id"]), "project": get_project(cur, project_id)})
+    project = get_project(cur, project_id)
+    audit.record(cur, user, "project_request", row["id"], "update",
+                 f"approved project request {row['name']}, creating {project['code']}", {"project_id": project_id})
+    return response(200, {"request": _reload(cur, row["id"]), "project": present_project(project)})
 
 
 @router.post("/{id}/reject")
@@ -200,7 +202,8 @@ def reject(request: Request, cur) -> dict:
                   review_note = %s, updated_at = now() WHERE id = %s""",
         [user["id"], note, row["id"]],
     )
-    audit.record(cur, user["id"], "project_request", row["id"], "reject", {"review_note": note})
+    audit.record(cur, user, "project_request", row["id"], "update", f"rejected project request {row['name']}",
+                 {"review_note": note})
     return response(200, _reload(cur, row["id"]))
 
 
