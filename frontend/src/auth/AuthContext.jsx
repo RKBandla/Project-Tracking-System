@@ -32,8 +32,8 @@ export function AuthProvider({ children }) {
       .finally(() => setReady(true));
   }, [ready]);
 
-  const login = useCallback(async (employeeId, password) => {
-    const session = await authApi.login(employeeId, password);
+  const login = useCallback(async (email, password) => {
+    const session = await authApi.login(email, password);
     saveSession(session);
     setUser(session.user);
     return session.user;

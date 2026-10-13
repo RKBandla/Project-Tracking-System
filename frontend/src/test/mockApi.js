@@ -35,7 +35,7 @@ export function signIn() {
 }
 
 export const USERS = {
-  admin: { id: 1, employee_id: 'ADMIN001', first_name: 'Ada', last_name: 'Admin', full_name: 'Ada Admin', email: 'ada@x.com', job_title: 'Administrator', role: 'admin', manager_id: null, salary: null, created_at: '2026-01-01' },
-  manager: { id: 2, employee_id: 'EMP0001', first_name: 'Max', last_name: 'Manager', full_name: 'Max Manager', email: 'max@x.com', job_title: 'Eng Manager', role: 'manager', manager_id: 1, salary: 120000, created_at: '2026-01-01' },
-  employee: { id: 3, employee_id: 'EMP0002', first_name: 'Eve', last_name: 'Employee', full_name: 'Eve Employee', email: 'eve@x.com', job_title: 'Engineer', role: 'employee', manager_id: 2, manager_name: 'Max Manager', salary: 80000, created_at: '2026-01-01' },
+  admin: { id: 1, employee_id: 'ADMIN001', first_name: 'Ada', last_name: 'Admin', full_name: 'Ada Admin', email: 'ada@x.com', job_title: 'Administrator', role: 'admin', manager_id: null, salary_cents: null, created_at: '2026-01-01' },
+  manager: { id: 2, employee_id: 'EMP0001', first_name: 'Max', last_name: 'Manager', full_name: 'Max Manager', email: 'max@x.com', job_title: 'Eng Manager', role: 'manager', manager_id: 1, salary_cents: 12000000, created_at: '2026-01-01' },
+  employee: { id: 3, employee_id: 'EMP0002', first_name: 'Eve', last_name: 'Employee', full_name: 'Eve Employee', email: 'eve@x.com', job_title: 'Engineer', role: 'employee', manager_id: 2, manager_name: 'Max Manager', salary_cents: 8000000, created_at: '2026-01-01' },
 };

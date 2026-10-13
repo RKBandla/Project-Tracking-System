@@ -3,23 +3,34 @@ import { AuthProvider } from './auth/AuthContext';
 import { useAuth } from './auth/useAuth';
 import { EmptyState, Loading } from './components/Feedback';
 import Layout from './components/Layout';
+import AllocationPage from './pages/AllocationPage';
+import ApprovalsPage from './pages/ApprovalsPage';
+import AuditPage from './pages/AuditPage';
 import DashboardPage from './pages/DashboardPage';
 import LoginPage from './pages/LoginPage';
+import NotificationsPage from './pages/NotificationsPage';
 import ProfilePage from './pages/ProfilePage';
 import ProjectDetailPage from './pages/ProjectDetailPage';
 import ProjectsPage from './pages/ProjectsPage';
 import RequestsPage from './pages/RequestsPage';
+import TimesheetPage from './pages/TimesheetPage';
 import UsersPage from './pages/UsersPage';
 import { Link, RouterProvider } from './router/Router';
 import { matchPath, useRouter } from './router/routing';
 
 /** Route table: path pattern, page and the roles allowed to open it. */
+const STAFF = ['admin', 'manager'];
 const ROUTES = [
   { path: '/', title: 'Dashboard', render: () => <DashboardPage /> },
   { path: '/projects', title: 'Projects', render: () => <ProjectsPage /> },
   { path: '/projects/:id', title: 'Project', render: ({ id }) => <ProjectDetailPage key={id} id={id} /> },
-  { path: '/requests', title: 'Project requests', roles: ['admin', 'manager'], render: () => <RequestsPage /> },
-  { path: '/users', title: 'People', roles: ['admin', 'manager'], render: () => <UsersPage /> },
+  { path: '/allocation', title: 'Allocation', roles: STAFF, render: () => <AllocationPage /> },
+  { path: '/timesheet', title: 'My timesheet', roles: ['employee'], render: () => <TimesheetPage /> },
+  { path: '/approvals', title: 'Hours to approve', roles: STAFF, render: () => <ApprovalsPage /> },
+  { path: '/requests', title: 'Project requests', roles: STAFF, render: () => <RequestsPage /> },
+  { path: '/users', title: 'People', roles: STAFF, render: () => <UsersPage /> },
+  { path: '/notifications', title: 'Notifications', render: () => <NotificationsPage /> },
+  { path: '/audit', title: 'Audit log', roles: ['admin'], render: () => <AuditPage /> },
   { path: '/profile', title: 'My profile', render: () => <ProfilePage /> },
 ];
 

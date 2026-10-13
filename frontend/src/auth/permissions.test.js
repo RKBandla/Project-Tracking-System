@@ -15,14 +15,16 @@ describe('can()', () => {
 
   it.each([
     ['users:create', true, false, false],
-    ['users:edit', true, false, false],
     ['users:list', true, true, false],
     ['projects:create', true, false, false],
     ['projects:archive', true, false, false],
-    ['projects:assignManager', true, false, false],
+    ['projects:editAll', true, false, false],
     ['requests:create', false, true, false],
     ['requests:review', true, false, false],
-    ['requests:view', true, true, false],
+    ['allocation:view', true, true, false],
+    ['timesheets:approve', true, true, false],
+    ['timesheets:log', false, false, true],
+    ['audit:view', true, false, false],
   ])('%s → admin %s, manager %s, employee %s', (action, a, m, e) => {
     expect(can(admin, action)).toBe(a);
     expect(can(manager, action)).toBe(m);
@@ -31,25 +33,27 @@ describe('can()', () => {
 
   it('managers manage only their own, non-archived projects', () => {
     expect(can(manager, 'projects:edit', ownProject)).toBe(true);
-    expect(can(manager, 'projects:edit', otherProject)).toBe(false);
+    expect(can(manager, 'resources:manage', otherProject)).toBe(false);
     expect(can(manager, 'deliverables:manage', archived)).toBe(false);
-    expect(can(admin, 'projects:edit', otherProject)).toBe(true);
+    expect(can(admin, 'budgets:manage', otherProject)).toBe(true);
     expect(can(admin, 'projects:edit', archived)).toBe(false);
     expect(can(employee, 'projects:edit', ownProject)).toBe(false);
   });
 
-  it('budgets are visible to admins and the project manager only', () => {
-    expect(can(admin, 'budgets:view', otherProject)).toBe(true);
-    expect(can(manager, 'budgets:view', ownProject)).toBe(true);
-    expect(can(manager, 'budgets:view', otherProject)).toBe(false);
-    expect(can(employee, 'budgets:view', ownProject)).toBe(false);
+  it('per-person costs are for admins and the project manager', () => {
+    expect(can(manager, 'budgets:breakdown', ownProject)).toBe(true);
+    expect(can(manager, 'budgets:breakdown', otherProject)).toBe(false);
+    expect(can(employee, 'budgets:breakdown', ownProject)).toBe(false);
   });
 
-  it('managers can assign only their direct reports', () => {
-    expect(can(manager, 'assignments:assignUser', { project: ownProject, person: employee })).toBe(true);
-    expect(can(manager, 'assignments:assignUser', { project: ownProject, person: { id: 9, manager_id: 1 } })).toBe(false);
-    expect(can(admin, 'assignments:assignUser', { project: otherProject, person: { id: 9, manager_id: 7 } })).toBe(true);
-    expect(can(admin, 'assignments:assignUser', { project: otherProject })).toBe(false);
+  it('managers review their direct reports; admins anyone; nobody themselves', () => {
+    const report = { user_id: 3, user_manager_id: manager.id, status: 'pending' };
+    const stranger = { user_id: 9, user_manager_id: 42, status: 'pending' };
+    expect(can(manager, 'timesheets:review', report)).toBe(true);
+    expect(can(manager, 'timesheets:review', stranger)).toBe(false);
+    expect(can(admin, 'timesheets:review', stranger)).toBe(true);
+    expect(can(admin, 'timesheets:review', { ...stranger, status: 'approved' })).toBe(false);
+    expect(can(manager, 'timesheets:review', { user_id: manager.id, user_manager_id: 1, status: 'pending' })).toBe(false);
   });
 
   it('only the requester edits a pending request', () => {

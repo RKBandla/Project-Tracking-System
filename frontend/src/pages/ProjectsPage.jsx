@@ -3,6 +3,7 @@ import { projectsApi } from '../api/services';
 import { useAuth } from '../auth/useAuth';
 import { can } from '../auth/permissions';
 import Badge from '../components/Badge';
+import BudgetBar from '../components/BudgetBar';
 import { DataTable, Pagination } from '../components/DataTable';
 import { EmptyState, ErrorState, Loading } from '../components/Feedback';
 import ProjectForm from '../components/forms/ProjectForm';
@@ -11,7 +12,7 @@ import { useAsync } from '../hooks/useAsync';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { Link } from '../router/Router';
 import { useRouter } from '../router/routing';
-import { PROJECT_HEALTH, PROJECT_STATUSES } from '../utils/constants';
+import { PROJECT_STATUSES } from '../utils/constants';
 import { formatDate, label } from '../utils/format';
 
 const PAGE_SIZE = 20;
@@ -29,9 +30,9 @@ function Progress({ done, total }) {
 /** Searchable, filterable list of the projects the user can see. */
 export default function ProjectsPage() {
   const { user } = useAuth();
-  const { navigate } = useRouter();
+  const { navigate, query: urlQuery } = useRouter();
   const [search, setSearch] = useState('');
-  const [filters, setFilters] = useState({ status: '', health: '', archived: 'false' });
+  const [filters, setFilters] = useState({ status: '', at_risk: urlQuery.at_risk || '', archived: 'false' });
   const [sort, setSort] = useState('name');
   const [page, setPage] = useState(1);
   const [creating, setCreating] = useState(false);
@@ -53,39 +54,48 @@ export default function ProjectsPage() {
       render: (p) => (
         <div className="cell-title">
           <Link to={`/projects/${p.id}`} onClick={(e) => e.stopPropagation()}>{p.name}</Link>
-          <span className="muted">{p.code}{p.is_archived ? ' · Archived' : ''}</span>
+          <span className="muted">{p.code} · {p.manager_name || 'No manager'}{p.is_archived ? ' · Archived' : ''}</span>
         </div>
       ),
     },
-    { key: 'manager_name', label: 'Manager', sortKey: 'manager_name', render: (p) => p.manager_name || 'Unassigned' },
     { key: 'status', label: 'Status', sortKey: 'status', render: (p) => <Badge value={p.status} /> },
-    { key: 'health', label: 'Health', sortKey: 'health', render: (p) => <Badge value={p.health} dot /> },
-    { key: 'end_date', label: 'Due', sortKey: 'end_date', render: (p) => formatDate(p.end_date) },
-    { key: 'progress', label: 'Progress', render: (p) => <Progress done={p.deliverables_done} total={p.deliverable_count} /> },
-    { key: 'team', label: 'Team', render: (p) => `${p.team_size} · ${p.team_hours} h/wk` },
+    {
+      key: 'risk',
+      label: 'Risk',
+      render: (p) => (p.is_archived ? '—' : (
+        <span title={p.risk_reasons.join('\n') || 'On track'}>
+          <Badge value={p.at_risk ? 'at_risk' : 'on_track'} dot />
+        </span>
+      )),
+    },
+    { key: 'end_date', label: 'Ends', sortKey: 'end_date', render: (p) => formatDate(p.end_date) },
+    { key: 'progress', label: 'Deliverables', render: (p) => <Progress done={p.deliverables_done} total={p.deliverable_count} /> },
+    {
+      key: 'budget',
+      label: 'Budget used',
+      sortKey: 'consumed_cents',
+      render: (p) => <BudgetBar compact budget={p.budget_cents} planned={p.planned_cents} consumed={p.consumed_cents} />,
+    },
   ];
 
   const isEmployee = user.role === 'employee';
-  const actions = (
-    <>
-      {can(user, 'projects:create') && (
-        <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>New project</button>
-      )}
-      {can(user, 'requests:create') && (
-        <button type="button" className="btn btn-primary" onClick={() => navigate('/requests?new=1')}>
-          Request a project
-        </button>
-      )}
-    </>
-  );
-
+  const filtered = q || filters.status || filters.at_risk;
   return (
     <>
       <PageHeader
         title={isEmployee ? 'My projects' : 'Projects'}
-        subtitle={isEmployee ? 'Projects you are currently assigned to.'
+        subtitle={isEmployee ? 'Projects you are currently booked on.'
           : user.role === 'manager' ? 'Projects you manage.' : 'Every project in the organisation.'}
-        actions={actions}
+        actions={(
+          <>
+            {can(user, 'projects:create') && (
+              <button type="button" className="btn btn-primary" onClick={() => setCreating(true)}>New project</button>
+            )}
+            {can(user, 'requests:create') && (
+              <button type="button" className="btn btn-primary" onClick={() => navigate('/requests?new=1')}>Request a project</button>
+            )}
+          </>
+        )}
       />
 
       <FilterBar>
@@ -101,9 +111,10 @@ export default function ProjectsPage() {
           <option value="">All statuses</option>
           {PROJECT_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
         </select>
-        <select aria-label="Filter by health" value={filters.health} onChange={(e) => setFilter('health', e.target.value)}>
-          <option value="">All health</option>
-          {PROJECT_HEALTH.map((h) => <option key={h} value={h}>{label(h)}</option>)}
+        <select aria-label="Filter by risk" value={filters.at_risk} onChange={(e) => setFilter('at_risk', e.target.value)}>
+          <option value="">Any risk</option>
+          <option value="true">At risk</option>
+          <option value="false">On track</option>
         </select>
         {!isEmployee && (
           <select aria-label="Archived projects" value={filters.archived} onChange={(e) => setFilter('archived', e.target.value)}>
@@ -127,8 +138,8 @@ export default function ProjectsPage() {
             onRowClick={(p) => navigate(`/projects/${p.id}`)}
             rowLabel={(p) => `Open ${p.name}`}
             empty={(
-              <EmptyState title={q || filters.status || filters.health ? 'No projects match your filters' : 'No projects yet'}>
-                {isEmployee && !q && 'Your manager will assign you to projects.'}
+              <EmptyState title={filtered ? 'No projects match your filters' : 'No projects yet'}>
+                {isEmployee && !filtered && 'Your manager will book you onto projects.'}
               </EmptyState>
             )}
           />

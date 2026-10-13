@@ -1,11 +1,15 @@
 import { describe, expect, it } from 'vitest';
 import { matchPath } from '../router/routing';
-import { fieldErrors, formatDate, formatMoney, initials, label, today } from './format';
+import {
+  addDays, centsToDollars, dollarsToCents, fieldErrors, formatCents, formatDate, formatHours, formatMoney,
+  initials, label, mondayOf, timeAgo, today,
+} from './format';
 
 describe('format helpers', () => {
   it('labels enum values', () => {
     expect(label('on_hold')).toBe('On hold');
-    expect(label('amber')).toBe('At risk');
+    expect(label('at_risk')).toBe('At risk');
+    expect(label('time_entry')).toBe('Time entry');
     expect(label('some_new_value')).toBe('some new value');
     expect(label(null)).toBe('');
   });
@@ -21,6 +25,30 @@ describe('format helpers', () => {
     expect(formatMoney(1500)).toBe('$1,500');
     expect(formatMoney(1500.5)).toBe('$1,500.50');
     expect(formatMoney(null)).toBe('$0');
+  });
+
+  it('handles money as whole cents', () => {
+    expect(formatCents(123456)).toBe('$1,234.56');
+    expect(formatCents(100000)).toBe('$1,000');
+    expect(dollarsToCents('12.345')).toBe(1235);
+    expect(dollarsToCents('')).toBeNull();
+    expect(centsToDollars(1250)).toBe('12.5');
+    expect(centsToDollars(null)).toBe('');
+  });
+
+  it('does date arithmetic on YYYY-MM-DD strings', () => {
+    expect(addDays('2026-01-30', 3)).toBe('2026-02-02');
+    expect(mondayOf('2026-10-18')).toBe('2026-10-12'); // Sunday -> Monday
+    expect(mondayOf('2026-10-12')).toBe('2026-10-12');
+    expect(formatHours(7.5)).toBe('7.5 h');
+  });
+
+  it('formats relative times', () => {
+    const now = new Date('2026-10-13T12:00:00Z').getTime();
+    expect(timeAgo('2026-10-13T11:59:30Z', now)).toBe('just now');
+    expect(timeAgo('2026-10-13T11:30:00Z', now)).toBe('30 min ago');
+    expect(timeAgo('2026-10-13T09:00:00Z', now)).toBe('3 h ago');
+    expect(timeAgo('2026-10-10T09:00:00Z', now)).toBe('Oct 10, 2026');
   });
 
   it('builds initials', () => {
