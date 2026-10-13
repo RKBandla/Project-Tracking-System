@@ -12,11 +12,12 @@ import { Link } from '../router/Router';
 import { useRouter } from '../router/routing';
 import BudgetTab from './project/BudgetTab';
 import DeliverablesTab from './project/DeliverablesTab';
+import DependencyTab from './project/DependencyTab';
 import OverviewTab from './project/OverviewTab';
-import TeamTab from './project/TeamTab';
+import ResourcesTab from './project/ResourcesTab';
 
 /**
- * One project with tabs for overview, team, deliverables and budget.
+ * One project with tabs for overview, deliverables, dependencies, resources and budget.
  *
  * @param {{id: string}} props Project id from the URL
  */
@@ -41,15 +42,12 @@ export default function ProjectDetailPage({ id }) {
   }
 
   const { project } = summary;
-  const canEdit = can(user, 'projects:edit', project);
-  const canManageTeam = can(user, 'projects:manageTeam', project);
-  const showBudget = can(user, 'budgets:view', project);
-
   const tabs = [
     { id: 'overview', label: 'Overview' },
-    { id: 'team', label: `Team (${summary.team.size})` },
     { id: 'deliverables', label: `Deliverables (${summary.deliverables.total})` },
-    ...(showBudget ? [{ id: 'budget', label: 'Budget' }] : []),
+    { id: 'dependencies', label: 'Dependencies' },
+    { id: 'resources', label: 'Resources' },
+    { id: 'budget', label: 'Budget' },
   ];
   const active = tabs.some((t) => t.id === query.tab) ? query.tab : 'overview';
   const setTab = (tab) => navigate(`/projects/${id}${tab === 'overview' ? '' : `?tab=${tab}`}`, { replace: true });
@@ -63,11 +61,7 @@ export default function ProjectDetailPage({ id }) {
       setConfirmState({ busy: false, error: '' });
       reload();
     } catch (err) {
-      const over = err.details?.over_allocated;
-      setConfirmState({
-        busy: false,
-        error: over ? `${err.message} (${over.length} ${over.length === 1 ? 'person' : 'people'} affected).` : err.message,
-      });
+      setConfirmState({ busy: false, error: err.message });
     }
   };
 
@@ -79,14 +73,16 @@ export default function ProjectDetailPage({ id }) {
         subtitle={(
           <span className="badge-row">
             <Badge value={project.status} />
-            <Badge value={project.health} dot />
+            {!project.is_archived && <Badge value={project.at_risk ? 'at_risk' : 'on_track'} dot />}
             {project.is_archived && <Badge value="archived" text="Archived" />}
             <span>Managed by {project.manager_name || 'nobody yet'}</span>
           </span>
         )}
         actions={(
           <>
-            {canEdit && <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>Edit</button>}
+            {can(user, 'projects:edit', project) && (
+              <button type="button" className="btn btn-secondary" onClick={() => setEditing(true)}>Edit</button>
+            )}
             {can(user, 'projects:archive') && (
               project.is_archived
                 ? <button type="button" className="btn btn-primary" onClick={() => setConfirm('reactivate')}>Reactivate</button>
@@ -104,18 +100,16 @@ export default function ProjectDetailPage({ id }) {
 
       <div role="tabpanel" aria-labelledby={`tab-${active}`}>
         {active === 'overview' && <OverviewTab summary={summary} />}
-        {active === 'team' && (
-          <TeamTab project={project} members={summary.team.members} canManage={canManageTeam} onChanged={reload} />
-        )}
         {active === 'deliverables' && (
-          <DeliverablesTab
-            project={project}
-            members={summary.team.members}
-            canManage={can(user, 'deliverables:manage', project)}
-            onChanged={reload}
-          />
+          <DeliverablesTab project={project} members={summary.team.members}
+            canManage={can(user, 'deliverables:manage', project)} onChanged={reload} />
         )}
-        {active === 'budget' && showBudget && (
+        {active === 'dependencies' && <DependencyTab project={project} />}
+        {active === 'resources' && (
+          <ResourcesTab project={project} canManage={can(user, 'resources:manage', project)}
+            showCost={user.role !== 'employee'} onChanged={reload} />
+        )}
+        {active === 'budget' && (
           <BudgetTab project={project} canManage={can(user, 'budgets:manage', project)} onChanged={reload} />
         )}
       </div>
@@ -135,8 +129,8 @@ export default function ProjectDetailPage({ id }) {
         <ConfirmDialog
           title={confirm === 'archive' ? 'Archive project?' : 'Reactivate project?'}
           message={confirm === 'archive'
-            ? <>Archive <strong>{project.name}</strong>? It becomes read-only and its team hours are freed up. All records are kept and it can be reactivated later.</>
-            : <>Reactivate <strong>{project.name}</strong>? Its team members&apos; hours will count towards their 40-hour limit again.</>}
+            ? <>Archive <strong>{project.name}</strong>? It becomes read-only and its bookings stop counting towards anyone&apos;s 40 hours. Nothing is deleted, so cost history is kept.</>
+            : <>Reactivate <strong>{project.name}</strong>? Its bookings will count towards the 40-hour weekly limit again.</>}
           confirmLabel={confirm === 'archive' ? 'Archive' : 'Reactivate'}
           danger={confirm === 'archive'}
           busy={confirmState.busy}

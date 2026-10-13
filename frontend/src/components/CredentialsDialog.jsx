@@ -4,13 +4,13 @@ import { Modal } from './Modal';
 /**
  * Shows a newly generated employee ID and password exactly once.
  *
- * @param {{title: string, name: string, employeeId: string, password: string, onClose: Function}} props
+ * @param {{title: string, name: string, email: string, employeeId: string, password: string, onClose: Function}} props
  */
-export default function CredentialsDialog({ title, name, employeeId, password, onClose }) {
+export default function CredentialsDialog({ title, name, email, employeeId, password, onClose }) {
   const [copied, setCopied] = useState(false);
   const copy = async () => {
     try {
-      await navigator.clipboard.writeText(`Employee ID: ${employeeId}\nPassword: ${password}`);
+      await navigator.clipboard.writeText(`Email: ${email}\nPassword: ${password}`);
       setCopied(true);
     } catch {
       setCopied(false);
@@ -31,6 +31,7 @@ export default function CredentialsDialog({ title, name, employeeId, password, o
     >
       <p>Share these sign-in details with <strong>{name}</strong>.</p>
       <dl className="credentials">
+        <div><dt>Sign-in email</dt><dd><code>{email}</code></dd></div>
         <div><dt>Employee ID</dt><dd><code>{employeeId}</code></dd></div>
         <div><dt>Password</dt><dd><code>{password}</code></dd></div>
       </dl>

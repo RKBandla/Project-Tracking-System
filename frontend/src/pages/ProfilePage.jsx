@@ -9,7 +9,7 @@ import { Card, DetailList, PageHeader } from '../components/PageParts';
 import { useAsync } from '../hooks/useAsync';
 import { useForm } from '../hooks/useForm';
 import { Link } from '../router/Router';
-import { formatDate, formatMoney, initials } from '../utils/format';
+import { formatDate, formatCents, initials } from '../utils/format';
 
 /** The signed-in user's details. Only first name, last name and email are editable. */
 export default function ProfilePage() {
@@ -50,7 +50,7 @@ export default function ProfilePage() {
               ['Employee ID', <code key="id">{user.employee_id}</code>],
               ['Email', user.email],
               ['Manager', user.manager_name || '—'],
-              ['Salary', user.salary == null ? '—' : formatMoney(user.salary)],
+              ['Salary', user.salary_cents == null ? '—' : formatCents(user.salary_cents)],
               ['Member since', formatDate(user.created_at)],
             ]}
           />
@@ -58,7 +58,7 @@ export default function ProfilePage() {
 
         <Card title="Edit personal information">
           <form className="form-stack" onSubmit={submit} noValidate>
-            <p className="muted">You can change your name and email. Ask an administrator to update anything else.</p>
+            <p className="muted">You can change your name and email (your email is how you sign in). Nobody can change their own role or salary.</p>
             {saved && <Alert kind="success">Your details have been saved.</Alert>}
             {formError && <Alert kind="error">{formError}</Alert>}
             <FormField label="First name" required error={errors.first_name}>
@@ -78,13 +78,13 @@ export default function ProfilePage() {
       </div>
 
       {workload && (
-        <Card title="My weekly workload" actions={<HoursBar hours={workload.allocated_hours} />}>
+        <Card title="My bookings" actions={<HoursBar hours={workload.current_week_hours} />}>
           {workload.assignments.length ? (
             <ul className="item-list">
               {workload.assignments.map((a) => (
                 <li key={a.id}>
                   <Link to={`/projects/${a.project_id}`} className="item-link">
-                    <span><strong>{a.project_name}</strong><span className="muted"> {a.project_code} {a.project_role && `· ${a.project_role}`}</span></span>
+                    <span><strong>{a.project_name}</strong><span className="muted"> {a.project_code} · {formatDate(a.start_date)} – {formatDate(a.end_date)}</span></span>
                     <span className="pill">{a.hours_per_week} h/wk</span>
                   </Link>
                 </li>

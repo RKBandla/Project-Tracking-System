@@ -12,11 +12,11 @@ import { ConfirmDialog } from '../components/Modal';
 import { FilterBar, PageHeader } from '../components/PageParts';
 import { useAsync } from '../hooks/useAsync';
 import { useDebouncedValue } from '../hooks/useDebouncedValue';
-import { formatMoney, label } from '../utils/format';
+import { formatCents, label } from '../utils/format';
 
 const PAGE_SIZE = 20;
 
-/** Admin: all users with create/edit/reset. Manager: read-only view of direct reports. */
+/** People directory. Admins create/edit/reset; managers browse everyone (salaries of direct reports only). */
 export default function UsersPage() {
   const { user, setUser } = useAuth();
   const isAdmin = can(user, 'users:edit');
@@ -37,7 +37,7 @@ export default function UsersPage() {
   const save = async (body) => {
     if (form === 'new') {
       const created = await usersApi.create(body);
-      setCredentials({ title: 'User created', name: created.user.full_name, employeeId: created.employee_id, password: created.temporary_password });
+      setCredentials({ title: 'User created', name: created.user.full_name, email: created.user.email, employeeId: created.employee_id, password: created.temporary_password });
     } else {
       const updated = await usersApi.update(form.id, body);
       if (updated.id === user.id) setUser({ ...user, ...updated });
@@ -50,7 +50,7 @@ export default function UsersPage() {
     setResetState({ busy: true, error: '' });
     try {
       const res = await usersApi.resetPassword(resetting.id);
-      setCredentials({ title: 'Password reset', name: resetting.full_name, employeeId: res.employee_id, password: res.temporary_password });
+      setCredentials({ title: 'Password reset', name: resetting.full_name, email: res.email, employeeId: res.employee_id, password: res.temporary_password });
       setResetting(null);
       setResetState({ busy: false, error: '' });
     } catch (err) {
@@ -69,14 +69,14 @@ export default function UsersPage() {
     },
     { key: 'job_title', label: 'Job title', sortKey: 'job_title' },
     { key: 'role', label: 'Role', sortKey: 'role', render: (u) => <Badge value={u.role} /> },
-    ...(isAdmin ? [{ key: 'manager_name', label: 'Manager', render: (u) => u.manager_name || '—' }] : []),
+    { key: 'manager_name', label: 'Manager', render: (u) => u.manager_name || '—' },
     {
-      key: 'allocated_hours',
-      label: 'Weekly load',
-      sortKey: 'allocated_hours',
-      render: (u) => (u.role === 'admin' ? '—' : <HoursBar hours={u.allocated_hours} compact />),
+      key: 'current_week_hours',
+      label: 'This week',
+      sortKey: 'current_week_hours',
+      render: (u) => (u.role === 'admin' ? '—' : <HoursBar hours={u.current_week_hours} compact />),
     },
-    { key: 'salary', label: 'Salary', className: 'num', render: (u) => (u.salary == null ? '—' : formatMoney(u.salary)) },
+    { key: 'salary_cents', label: 'Salary', className: 'num', render: (u) => (u.salary_cents == null ? '—' : formatCents(u.salary_cents)) },
     ...(isAdmin ? [{
       key: 'status',
       label: 'Status',
@@ -97,8 +97,8 @@ export default function UsersPage() {
   return (
     <>
       <PageHeader
-        title={isAdmin ? 'Users' : 'My team'}
-        subtitle={isAdmin ? 'Create accounts, assign roles and managers.' : 'People who report to you and their weekly load.'}
+        title="People"
+        subtitle={isAdmin ? 'Create accounts, assign roles and managers.' : 'Everyone in the company and their bookings this week. Salaries are shown for your direct reports.'}
         actions={can(user, 'users:create') && (
           <button type="button" className="btn btn-primary" onClick={() => setForm('new')}>New user</button>
         )}
@@ -132,7 +132,7 @@ export default function UsersPage() {
             rows={data.items}
             sort={sort}
             onSort={(s) => { setSort(s); setPage(1); }}
-            empty={<EmptyState title={isAdmin ? 'No users match' : 'No one reports to you yet'} />}
+            empty={<EmptyState title="No people match" />}
           />
           <Pagination page={page} pageSize={PAGE_SIZE} total={data.total} onChange={setPage} />
         </>

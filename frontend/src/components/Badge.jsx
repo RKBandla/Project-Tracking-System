@@ -5,9 +5,8 @@ const TONES = {
   active: 'info',
   on_hold: 'warning',
   completed: 'success',
-  green: 'success',
-  amber: 'warning',
-  red: 'danger',
+  at_risk: 'danger',
+  on_track: 'success',
   pending: 'warning',
   approved: 'success',
   rejected: 'danger',
@@ -20,6 +19,9 @@ const TONES = {
   manager: 'info',
   employee: 'neutral',
   archived: 'neutral',
+  create: 'success',
+  update: 'info',
+  archive: 'neutral',
   inactive: 'danger',
 };
 

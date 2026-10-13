@@ -3,10 +3,10 @@ import { useAuth } from '../auth/useAuth';
 import FormField from '../components/FormField';
 import { Alert } from '../components/Feedback';
 
-/** Sign-in with employee ID and password. */
+/** Sign-in with email and password. */
 export default function LoginPage() {
   const { login } = useAuth();
-  const [employeeId, setEmployeeId] = useState('');
+  const [email, setEmail] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,9 +16,9 @@ export default function LoginPage() {
     setError('');
     setBusy(true);
     try {
-      await login(employeeId.trim(), password);
+      await login(email.trim(), password);
     } catch (err) {
-      setError(err.status === 400 ? 'Enter your employee ID and password.' : err.message);
+      setError(err.status === 400 ? 'Enter your email address and password.' : err.message);
       setBusy(false);
     }
   };
@@ -36,22 +36,23 @@ export default function LoginPage() {
         </div>
         <ul className="login-points">
           <li>Real-time project health</li>
-          <li>40-hour capacity planning</li>
-          <li>Budget burn at a glance</li>
+          <li>40-hour weekly capacity</li>
+          <li>Planned vs consumed budget</li>
+          <li>Timesheets and approvals</li>
         </ul>
       </section>
       <main className="login-panel">
         <form className="login-form" onSubmit={onSubmit} noValidate>
           <h1>Sign in</h1>
-          <p className="muted">Use the employee ID and password provided by your administrator.</p>
+          <p className="muted">Use your work email and the password provided by your administrator.</p>
           {error && <Alert kind="error">{error}</Alert>}
-          <FormField label="Employee ID" required>
+          <FormField label="Email" required>
             <input
-              value={employeeId}
-              onChange={(e) => setEmployeeId(e.target.value)}
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
               autoComplete="username"
-              autoCapitalize="characters"
-              placeholder="e.g. EMP0001"
+              placeholder="you@company.com"
             />
           </FormField>
           <FormField label="Password" required>

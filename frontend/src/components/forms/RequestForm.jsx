@@ -1,4 +1,5 @@
-import { emptyToNull, toNumber, useForm } from '../../hooks/useForm';
+import { emptyToNull, useForm } from '../../hooks/useForm';
+import { centsToDollars, dollarsToCents } from '../../utils/format';
 import { Alert } from '../Feedback';
 import FormField from '../FormField';
 import { Modal } from '../Modal';
@@ -15,7 +16,7 @@ export default function RequestForm({ request, onSave, onClose }) {
     justification: request?.justification || '',
     proposed_start_date: request?.proposed_start_date || '',
     proposed_end_date: request?.proposed_end_date || '',
-    proposed_budget: request?.proposed_budget ?? '',
+    proposed_budget: centsToDollars(request?.proposed_budget_cents ?? null),
   });
 
   const submit = handleSubmit(async (v) => {
@@ -25,7 +26,7 @@ export default function RequestForm({ request, onSave, onClose }) {
       justification: v.justification,
       proposed_start_date: emptyToNull(v.proposed_start_date),
       proposed_end_date: emptyToNull(v.proposed_end_date),
-      proposed_budget: toNumber(v.proposed_budget) ?? 0,
+      proposed_budget_cents: dollarsToCents(v.proposed_budget) ?? 0,
     });
   });
 
@@ -63,7 +64,7 @@ export default function RequestForm({ request, onSave, onClose }) {
         <FormField label="Proposed end" error={errors.proposed_end_date}>
           <input type="date" {...bind('proposed_end_date')} />
         </FormField>
-        <FormField label="Proposed budget (USD)" error={errors.proposed_budget}>
+        <FormField label="Proposed budget (USD)" error={errors.proposed_budget_cents}>
           <input type="number" min="0" step="0.01" inputMode="decimal" {...bind('proposed_budget')} />
         </FormField>
       </form>

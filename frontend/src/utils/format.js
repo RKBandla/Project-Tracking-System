@@ -10,9 +10,8 @@ const LABELS = {
   active: 'Active',
   on_hold: 'On hold',
   completed: 'Completed',
-  green: 'On track',
-  amber: 'At risk',
-  red: 'Off track',
+  at_risk: 'At risk',
+  on_track: 'On track',
   pending: 'Pending',
   approved: 'Approved',
   rejected: 'Rejected',
@@ -21,12 +20,15 @@ const LABELS = {
   in_progress: 'In progress',
   blocked: 'Blocked',
   done: 'Done',
-  labor: 'Labor',
-  software: 'Software',
-  hardware: 'Hardware',
-  travel: 'Travel',
-  services: 'Services',
-  other: 'Other',
+  project_request: 'Project request',
+  time_entry: 'Time entry',
+  assignment: 'Assignment',
+  deliverable: 'Deliverable',
+  project: 'Project',
+  user: 'User',
+  create: 'Create',
+  update: 'Edit',
+  archive: 'Archive',
 };
 
 /** Human label for an enum value. */
@@ -52,6 +54,64 @@ export function formatMoney(value) {
     minimumFractionDigits: Number.isInteger(n) ? 0 : 2,
     maximumFractionDigits: 2,
   });
+}
+
+/** Format whole cents as dollars, e.g. 123456 -> "$1,234.56". */
+export function formatCents(cents) {
+  return formatMoney(Number(cents || 0) / 100);
+}
+
+/** Convert a dollar amount typed in a form to whole cents (null when empty). */
+export function dollarsToCents(value) {
+  if (value === '' || value === null || value === undefined) return null;
+  return Math.round(Number(value) * 100);
+}
+
+/** Convert cents to a dollar string for a form input. */
+export function centsToDollars(cents) {
+  if (cents === null || cents === undefined) return '';
+  return String(Number(cents) / 100);
+}
+
+/** Format hours, dropping trailing zeros (7.50 -> "7.5"). */
+export function formatHours(value) {
+  return `${Number(value || 0).toLocaleString('en-US', { maximumFractionDigits: 2 })} h`;
+}
+
+/** Add days to a YYYY-MM-DD date string. */
+export function addDays(iso, days) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const date = new Date(y, m - 1, d + days);
+  const pad = (n) => String(n).padStart(2, '0');
+  return `${date.getFullYear()}-${pad(date.getMonth() + 1)}-${pad(date.getDate())}`;
+}
+
+/** Monday of the week containing a YYYY-MM-DD date. */
+export function mondayOf(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  const day = new Date(y, m - 1, d).getDay();
+  return addDays(iso, -((day + 6) % 7));
+}
+
+/** Short day label, e.g. "Mon 5". */
+export function formatDay(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { weekday: 'short', day: 'numeric' });
+}
+
+/** Short date for grid headers, e.g. "Jan 5". */
+export function formatShortDate(iso) {
+  const [y, m, d] = iso.split('-').map(Number);
+  return new Date(y, m - 1, d).toLocaleDateString('en-US', { month: 'short', day: 'numeric' });
+}
+
+/** Relative time for notifications, e.g. "5 min ago". */
+export function timeAgo(value, now = Date.now()) {
+  const seconds = Math.max(0, Math.round((now - new Date(value).getTime()) / 1000));
+  if (seconds < 60) return 'just now';
+  if (seconds < 3600) return `${Math.floor(seconds / 60)} min ago`;
+  if (seconds < 86400) return `${Math.floor(seconds / 3600)} h ago`;
+  return formatDate(value);
 }
 
 /** Initials for an avatar. */

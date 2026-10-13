@@ -1,6 +1,6 @@
 # Project Tracking System
 
-A stand-alone web application for tracking projects, the people assigned to them, their deliverables and their budgets, with real-time visibility into project health and team capacity.
+A stand-alone web application for tracking projects, the people booked on them, their deliverables and their budgets, with real-time visibility into project health, resource allocation and delivery progress.
 
 - **Frontend:** React 19 (Vite) with hand-written HTML/CSS — no UI libraries
 - **Backend:** Python 3.13 AWS Lambda functions (one per service)
@@ -14,46 +14,89 @@ Browser ─► CloudFront ─┬─► S3 (React build)
 Local:  Vite :3000 ─► proxy :3001 ─► LocalStack Lambdas ─► local PostgreSQL :5432
 ```
 
-## Roles
+## What the MVP builds
 
-| Capability | Admin | Manager | Employee |
+| Requirement | How |
+|---|---|
+| Authentication and authorization | Log in with email and password; signed JWT that expires (1 h, refreshable for 7 days); passwords hashed (PBKDF2) |
+| Role-based access control | Admin, Manager, Employee — the server checks the role on every request |
+| CRUD for projects | Create, view, edit, archive and reactivate |
+| CRUD for deliverables | Same, per project, plus "depends on" links between deliverables |
+| CRUD for resources | Book a person onto a project for N hours per week over a date range |
+| CRUD for budget tracking | A budget per project; planned cost comes from bookings, consumed cost from approved logged hours |
+| Search and filter | Name search and status filter on every list, done on the server, paginated |
+| Responsive design | Tables turn into cards on phones; the allocation grid, timeline and dependency view scroll sideways |
+
+## Who can do what
+
+| | Admin | Manager | Employee |
 |---|---|---|---|
-| Create users (any role, including admins) | ✓ | | |
-| Update user information | anyone, any field | own name/email | own name/email only |
-| Create projects | ✓ | submits a **project request** | |
-| Approve / reject project requests | ✓ | | |
-| Edit projects | all | projects they manage | |
-| Archive / reactivate projects | ✓ | | |
-| Assign a project's manager | ✓ | | |
-| Assign people to projects | anyone | their direct reports, on projects they manage | |
-| Deliverables and budget items | all projects | projects they manage | view deliverables on assigned projects |
-| See projects | all | projects they manage | projects currently assigned to them |
-| See salary | all | direct reports | own |
+| Create users, set roles | yes | no | no |
+| Create projects, assign their manager | yes | no, files a request | no |
+| Approve project requests | yes | no | no |
+| Edit a project | all fields | own projects: description and status | no |
+| Deliverables, resources and budget on a project | yes | own projects | view if assigned |
+| Book people onto projects | yes | own projects, anyone in the company | no |
+| Log hours | no | no | own, on booked projects |
+| Approve logged hours | yes, anyone | their direct reports | no |
+| See projects | all | the ones they manage | the ones they're booked on |
+| Edit own name and email | yes | yes | yes |
 
-### Business rules
+Nobody changes their own role or salary.
 
-- **Projects are never deleted.** Admins archive them (`is_archived`, `archived_at`, `archived_by`); archived projects are read-only, hidden by default, and can be reactivated. Every change is recorded in `audit_log`.
-- **Credentials are generated.** Creating a user generates an **employee ID** (`EMP0001`, …) and a **random 6-character password**. The password is shown once to the admin and stored only as a PBKDF2 hash. Users sign in with employee ID + password; admins can reset a password.
-- **One manager per person** (`users.manager_id`), with reporting-cycle checks.
-- **40-hour week.** A person can be assigned to many projects, but their weekly hours across non-archived projects cannot exceed 40 (8 h × 5 days). Reactivating a project re-checks this for its team.
-- Employees can change only their first name, last name and email.
+## Rules the app enforces (each one demoable as a refusal)
+
+1. **Nobody is booked over 40 hours in any week**, across all projects. The 41st hour is refused (409) and the response names the conflicting projects.
+2. **Nothing is deleted.** Records are archived (or withdrawn) and can be reactivated, so cost history survives. There is no DELETE route.
+3. **Deliverable dependencies can't loop.** A link that would create a cycle is refused and the loop is named.
+4. **A deliverable can't be marked done while something it depends on isn't.**
+5. **Money is whole cents.** Budgets, salaries and costs are integers on the server, formatted only on screen.
+6. **Only approved hours count as consumed.**
+7. **Every change is recorded.** Each create, edit or archive writes one audit-log row, and everyone above the actor in the reporting line gets an in-app notification.
+8. **Another manager's project answers "not found"**, not "forbidden", so ids can't be probed.
+
+## How the money works
+
+```text
+hourly rate   = annual salary / 2080            (40 h x 52 weeks)
+planned cost  = sum of (hours per week x weeks in booking x hourly rate)
+consumed cost = sum of (approved logged hours x hourly rate)
+at risk       = past end date and not complete, OR a deliverable overdue,
+                OR consumed share of budget > elapsed share of schedule + 15%
+```
+
+## Screens
+
+Login · Dashboard (status, at-risk with reasons, budget, capacity) · Projects (list and detail with Overview, Deliverables list/timeline, Dependencies, Resources and Budget tabs) · Allocation grid · People · My timesheet · Hours to approve · Project requests · Notifications · Audit log (admin) · My profile
+
+| Question | Where |
+|---|---|
+| What is the status of each active project? | Projects list, status column |
+| Which projects are at risk of missing deadlines? | Dashboard "At risk" panel, with the reason |
+| How are resources allocated across projects? | Allocation grid: people down, weeks across |
+| What are the key deliverables and their completion status? | Deliverables tab: list and timeline |
+| Which team members are over-allocated? | Allocation grid: cells at/over 40 h flagged; dashboard "Fully booked" |
+| What is the dependency chain between deliverables? | Dependencies tab on the project |
+| How much budget is consumed versus planned? | Budget bar on the project, projects list and dashboard |
 
 ## Repository layout
 
 ```
 backend/
   _shared/            shared code, copied into each service as `shared/` by bin/sync-shared.sh
-  auth/               POST /login, POST /refresh, GET /me
-  users/              users, profile (/me), reset-password, workload
-  projects/           projects, archive/reactivate, summary, dashboard
+  auth/               log in with email, refresh, me
+  users/              people, profile (/me), reset-password, weekly workload
+  projects/           projects, archive/reactivate, summary, dashboard, at-risk
   project-requests/   manager requests, admin approve/reject
-  assignments/        project assignments (40-hour rule)
-  deliverables/       deliverables per project
-  budgets/            planned vs actual budget items
+  assignments/        bookings over date ranges (40 h/week rule), allocation grid
+  deliverables/       deliverables, dependencies, dependency graph
+  budgets/            budget vs planned vs consumed, per-person breakdown
+  timesheets/         log hours, approve/reject
+  activity/           notifications and audit log
   tests/              pytest suite (runs handlers against a local PostgreSQL test DB)
 frontend/             React app (src/pages, src/components, src/api, src/auth, src/router)
 infra/                Terraform (Lambda, Function URLs, CloudFront, S3, Aurora)
-bin/                  start-dev.sh, deploy-backend.sh, deploy-frontend.sh, sync-shared.sh, …
+bin/                  start-dev.sh, deploy-backend.sh, deploy-frontend.sh, sync-shared.sh, smoke-test.py
 ```
 
 Each folder under `backend/` with a `requirements.txt` becomes a Lambda named `coding-workshop-<folder>-<app id>` and is served at `/api/<folder>`.
@@ -68,11 +111,13 @@ All endpoints take and return JSON and require `Authorization: Bearer <access to
 | `/api/users` | `GET /`, `POST /`, `GET|PUT /me`, `GET|PUT /{id}`, `POST /{id}/reset-password`, `GET /{id}/workload` |
 | `/api/projects` | `GET /`, `POST /`, `GET /dashboard`, `GET|PUT /{id}`, `POST /{id}/archive`, `POST /{id}/reactivate`, `GET /{id}/summary` |
 | `/api/project-requests` | `GET /`, `POST /`, `GET|PUT /{id}`, `POST /{id}/withdraw`, `POST /{id}/approve`, `POST /{id}/reject` |
-| `/api/assignments` | `GET /`, `POST /`, `GET|PUT|DELETE /{id}` |
-| `/api/deliverables` | `GET /`, `POST /`, `GET|PUT|DELETE /{id}` |
-| `/api/budgets` | `GET /` (includes `totals`), `POST /`, `GET|PUT|DELETE /{id}` |
+| `/api/assignments` | `GET /`, `GET /grid`, `POST /`, `GET|PUT /{id}`, `POST /{id}/archive`, `POST /{id}/reactivate` |
+| `/api/deliverables` | `GET /`, `GET /graph`, `POST /`, `GET|PUT /{id}` (incl. `depends_on`), `POST /{id}/archive`, `POST /{id}/reactivate` |
+| `/api/budgets` | `GET /`, `GET /{project id}`, `PUT /{project id}` |
+| `/api/timesheets` | `GET /`, `GET /week`, `POST /`, `PUT /{id}`, `POST /{id}/withdraw`, `POST /{id}/approve`, `POST /{id}/reject`, `POST /approve-batch` |
+| `/api/activity` | `GET /notifications`, `POST /notifications/read-all`, `POST /notifications/{id}/read`, `GET /audit` |
 
-The schema is created automatically (idempotently) on each Lambda's first request, and the first admin is seeded from `ADMIN_EMPLOYEE_ID` / `ADMIN_PASSWORD`.
+The schema is created automatically (idempotently) on each Lambda's first request, and the first admin is seeded from `ADMIN_EMAIL` / `ADMIN_PASSWORD`. A version-1 development database is rebuilt automatically the first time version 2 runs.
 
 ## Local development
 
@@ -86,7 +131,7 @@ Open http://localhost:3000 and sign in as the seeded admin:
 
 ```bash
 cd infra
-terraform output admin_employee_id      # ADMIN001
+terraform output admin_email            # admin@pts.local
 terraform output -raw admin_password    # generated 6-character password
 ```
 
@@ -98,7 +143,7 @@ After changing backend code, run `./bin/sync-shared.sh` (LocalStack hot-reloads 
 # Backend: unit + integration tests against a local PostgreSQL database "pts_test"
 python3.13 -m venv .venv && .venv/bin/pip install -r backend/requirements-dev.txt
 cd backend && ../.venv/bin/python -m pytest --cov=. --cov-report=term-missing
-../.venv/bin/bandit -r . -x ./tests
+../.venv/bin/bandit _shared/*.py */function.py
 
 # Frontend: Vitest + Testing Library, ESLint, production build
 cd frontend && npm install && npm run lint && npm test && npm run build
@@ -106,7 +151,7 @@ cd frontend && npm install && npm run lint && npm test && npm run build
 
 ```bash
 # End-to-end smoke test against a running stack (local proxy or CloudFront URL).
-# Creates throwaway users/projects, checks the role rules and the 40-hour limit, then
+# Creates throwaway users/projects, demonstrates every rule as a refusal, then
 # deactivates/archives what it created.
 ./bin/smoke-test.py --url http://localhost:3001 --admin-password "$(terraform -chdir=infra output -raw admin_password)"
 ```
@@ -118,4 +163,4 @@ cd frontend && npm install && npm run lint && npm test && npm run build
 ./bin/deploy-frontend.sh aws    # build the React app and sync it to S3, invalidate CloudFront
 ```
 
-`deploy-backend.sh` fetches temporary workshop credentials into `ENVIRONMENT.config` (never committed). The site URL is `terraform -chdir=infra output website_url`; the admin password is `terraform -chdir=infra output -raw admin_password`.
+`deploy-backend.sh` fetches temporary workshop credentials into `ENVIRONMENT.config` (never committed). The site URL is `terraform -chdir=infra output website_url`; the admin login is `terraform -chdir=infra output admin_email` and `terraform -chdir=infra output -raw admin_password`.

@@ -2,7 +2,7 @@ import { usersApi } from '../../api/services';
 import { ROLES } from '../../auth/permissions';
 import { useAsync } from '../../hooks/useAsync';
 import { toNumber, useForm } from '../../hooks/useForm';
-import { label } from '../../utils/format';
+import { centsToDollars, dollarsToCents, label } from '../../utils/format';
 import { Alert } from '../Feedback';
 import FormField from '../FormField';
 import { Modal } from '../Modal';
@@ -24,7 +24,7 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
     last_name: user?.last_name || '',
     email: user?.email || '',
     job_title: user?.job_title || '',
-    salary: user?.salary ?? '',
+    salary: centsToDollars(user?.salary_cents ?? null),
     role: user?.role || 'employee',
     manager_id: user?.manager_id ?? '',
     is_active: user?.is_active ?? true,
@@ -36,11 +36,16 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
       last_name: v.last_name,
       email: v.email,
       job_title: v.job_title,
-      salary: toNumber(v.salary),
+      salary_cents: dollarsToCents(v.salary),
       role: v.role,
       manager_id: toNumber(v.manager_id),
     };
-    if (editing && !isSelf) body.is_active = Boolean(v.is_active);
+    if (isSelf) {
+      delete body.role;
+      delete body.salary_cents;
+    } else if (editing) {
+      body.is_active = Boolean(v.is_active);
+    }
     await onSave(body);
   });
 
@@ -75,7 +80,7 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
         <FormField label="Job title" required error={errors.job_title}>
           <input {...bind('job_title')} maxLength={150} />
         </FormField>
-        <FormField label="Role" required error={errors.role} hint={isSelf ? 'You cannot change your own role.' : undefined}>
+        <FormField label="Role" required error={errors.role} hint={isSelf ? 'Nobody can change their own role.' : undefined}>
           <select {...bind('role')} disabled={isSelf}>
             {ROLES.map((r) => <option key={r} value={r}>{label(r)}</option>)}
           </select>
@@ -86,8 +91,9 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
             {managers.map((m) => <option key={m.id} value={m.id}>{m.full_name} ({label(m.role)})</option>)}
           </select>
         </FormField>
-        <FormField label="Annual salary (USD)" error={errors.salary}>
-          <input type="number" min="0" step="0.01" inputMode="decimal" {...bind('salary')} />
+        <FormField label="Annual salary (USD)" error={errors.salary_cents}
+          hint={isSelf ? 'Nobody can change their own salary.' : 'Hourly rate = salary ÷ 2080'}>
+          <input type="number" min="0" step="0.01" inputMode="decimal" {...bind('salary')} disabled={isSelf} />
         </FormField>
         {editing && !isSelf && (
           <div className="field checkbox-field">

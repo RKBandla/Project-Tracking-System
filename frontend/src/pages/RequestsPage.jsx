@@ -14,7 +14,7 @@ import { useDebouncedValue } from '../hooks/useDebouncedValue';
 import { Link } from '../router/Router';
 import { useRouter } from '../router/routing';
 import { REQUEST_STATUSES } from '../utils/constants';
-import { formatDate, formatMoney, label } from '../utils/format';
+import { formatDate, formatCents, label } from '../utils/format';
 
 const PAGE_SIZE = 20;
 
@@ -60,7 +60,7 @@ function ReviewDialog({ request, decision, onDone, onClose }) {
       <form id="review-form" className="form-stack" onSubmit={submit}>
         <p>
           <strong>{request.name}</strong> requested by {request.requested_by_name}
-          {Number(request.proposed_budget) > 0 && <> · {formatMoney(request.proposed_budget)}</>}
+          {request.proposed_budget_cents > 0 && <> · {formatCents(request.proposed_budget_cents)}</>}
         </p>
         {approve && <p className="muted">A project will be created with {request.requested_by_name} as manager.</p>}
         {error && <Alert kind="error">{error}</Alert>}
@@ -127,7 +127,7 @@ export default function RequestsPage() {
       ),
     },
     ...(isAdmin ? [{ key: 'requested_by_name', label: 'Requested by' }] : []),
-    { key: 'proposed_budget', label: 'Budget', className: 'num', render: (r) => formatMoney(r.proposed_budget) },
+    { key: 'proposed_budget_cents', label: 'Budget', className: 'num', render: (r) => formatCents(r.proposed_budget_cents) },
     {
       key: 'dates',
       label: 'Timeline',
