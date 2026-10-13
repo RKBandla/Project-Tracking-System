@@ -104,6 +104,13 @@ cd backend && ../.venv/bin/python -m pytest --cov=. --cov-report=term-missing
 cd frontend && npm install && npm run lint && npm test && npm run build
 ```
 
+```bash
+# End-to-end smoke test against a running stack (local proxy or CloudFront URL).
+# Creates throwaway users/projects, checks the role rules and the 40-hour limit, then
+# deactivates/archives what it created.
+./bin/smoke-test.py --url http://localhost:3001 --admin-password "$(terraform -chdir=infra output -raw admin_password)"
+```
+
 ## Deploying to AWS
 
 ```bash
