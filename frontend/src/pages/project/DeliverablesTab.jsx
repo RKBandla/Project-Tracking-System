@@ -4,6 +4,7 @@ import Badge from '../../components/Badge';
 import { DataTable } from '../../components/DataTable';
 import { EmptyState, ErrorState, Loading } from '../../components/Feedback';
 import DeliverableForm from '../../components/forms/DeliverableForm';
+import MilestoneMark from '../../components/MilestoneMark';
 import { ConfirmDialog } from '../../components/Modal';
 import { Card, FilterBar } from '../../components/PageParts';
 import { useAsync } from '../../hooks/useAsync';
@@ -15,7 +16,8 @@ const DAY = 86_400_000;
 const toTime = (iso) => new Date(`${iso}T00:00:00`).getTime();
 
 /**
- * Timeline (Gantt-style) of deliverables: a bar from start to due date, scrolled sideways on phones.
+ * Timeline (Gantt-style) of deliverables: a bar from start to due date, or a ◆ on the date for a
+ * milestone. Scrolls sideways on phones.
  *
  * @param {{items: object[], project: object}} props
  */
@@ -45,9 +47,15 @@ function Timeline({ items, project }) {
           const end = d.due_date || d.start_date;
           return (
             <div key={d.id} className="timeline-row" role="listitem">
-              <span className="timeline-label" title={d.title}>{d.title}</span>
+              <span className="timeline-label" title={d.title}>{d.is_milestone && <MilestoneMark />} {d.title}</span>
               <span className="timeline-lane">
-                {start ? (
+                {d.is_milestone && d.due_date ? (
+                  <span
+                    className={`timeline-milestone status-${d.status} ${d.is_overdue ? 'overdue' : ''}`}
+                    style={{ left: `${pos(d.due_date)}%` }}
+                    title={`${d.title}: milestone on ${formatDate(d.due_date)} · ${label(d.status)}${d.is_overdue ? ' · missed' : ''}`}
+                  />
+                ) : start ? (
                   <span
                     className={`timeline-bar status-${d.status} ${d.is_overdue ? 'overdue' : ''}`}
                     style={{ left: `${pos(start)}%`, width: `max(${pos(addDays(end, 1)) - pos(start)}%, 6px)` }}
@@ -75,13 +83,14 @@ export default function DeliverablesTab({ project, members, canManage, onChanged
   const [search, setSearch] = useState('');
   const [status, setStatus] = useState('');
   const [archived, setArchived] = useState('false');
+  const [kind, setKind] = useState('');
   const [sort, setSort] = useState('due_date');
   const [editing, setEditing] = useState(null);
   const [confirm, setConfirm] = useState(null);
   const [confirmState, setConfirmState] = useState({ busy: false, error: '' });
   const q = useDebouncedValue(search);
 
-  const query = { project_id: project.id, q, status, archived, sort, page_size: 100 };
+  const query = { project_id: project.id, q, status, archived, milestone: kind, sort, page_size: 100 };
   const { data, error, loading, reload } = useAsync(() => deliverablesApi.list(query), JSON.stringify(query));
   const { data: all, reload: reloadAll } = useAsync(
     () => deliverablesApi.list({ project_id: project.id, page_size: 100, sort: 'title' }),
@@ -124,7 +133,7 @@ export default function DeliverablesTab({ project, members, canManage, onChanged
       sortKey: 'title',
       render: (d) => (
         <div className="cell-title">
-          <strong>{d.title}</strong>
+          <strong>{d.is_milestone && <MilestoneMark />} {d.title}</strong>
           {d.depends_on.length > 0 && (
             <span className="muted clamp">Depends on: {d.depends_on.map((id) => titles[id] || `#${id}`).join(', ')}</span>
           )}
@@ -147,7 +156,11 @@ export default function DeliverablesTab({ project, members, canManage, onChanged
       key: 'due_date',
       label: 'Due',
       sortKey: 'due_date',
-      render: (d) => <span className={d.is_overdue ? 'due overdue' : 'due'}>{formatDate(d.due_date)}{d.is_overdue ? ' · overdue' : ''}</span>,
+      render: (d) => (
+        <span className={d.is_overdue ? 'due overdue' : 'due'}>
+          {formatDate(d.due_date)}{d.is_overdue ? (d.is_milestone ? ' · missed' : ' · overdue') : ''}
+        </span>
+      ),
     },
     {
       key: 'progress_pct',
@@ -202,6 +215,11 @@ export default function DeliverablesTab({ project, members, canManage, onChanged
             <option value="">All statuses</option>
             {DELIVERABLE_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
           </select>
+          <select aria-label="Filter by type" value={kind} onChange={(e) => setKind(e.target.value)}>
+            <option value="">All types</option>
+            <option value="true">Milestones</option>
+            <option value="false">Work items</option>
+          </select>
           <select aria-label="Archived deliverables" value={archived} onChange={(e) => setArchived(e.target.value)}>
             <option value="false">Current</option>
             <option value="true">Archived</option>
@@ -212,7 +230,7 @@ export default function DeliverablesTab({ project, members, canManage, onChanged
         {loading && !data && <Loading />}
         {data && view === 'list' && (
           <DataTable caption="Deliverables" columns={columns} rows={data.items} sort={sort} onSort={setSort}
-            empty={<EmptyState title={q || status ? 'No deliverables match' : 'No deliverables yet'} />} />
+            empty={<EmptyState title={q || status || kind ? 'No deliverables match' : 'No deliverables yet'} />} />
         )}
         {data && view === 'timeline' && <Timeline items={data.items} project={project} />}
       </Card>

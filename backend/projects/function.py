@@ -159,6 +159,17 @@ def dashboard(request: Request, cur) -> dict:
         deliverable_params,
     )
     overdue = cur.fetchone()["n"]
+    # Open milestones in the next 90 days, plus any already missed, on the projects the user can see
+    cur.execute(
+        f"""SELECT d.id, d.title, d.status, d.due_date, d.project_id, p.code AS project_code,
+                   p.name AS project_name, d.due_date < CURRENT_DATE AS is_missed
+            FROM deliverables d JOIN projects p ON p.id = d.project_id
+            WHERE d.project_id IN (SELECT id FROM projects {where}) AND NOT d.is_archived AND d.is_milestone
+              AND d.status <> 'done' AND d.due_date <= CURRENT_DATE + 90
+            ORDER BY d.due_date LIMIT 8""",  # nosec B608
+        params,
+    )
+    milestones = cur.fetchall()
 
     result = {
         "role": user["role"],
@@ -168,6 +179,7 @@ def dashboard(request: Request, cur) -> dict:
         "at_risk_projects": at_risk[:10],
         "upcoming_deliverables": upcoming,
         "overdue_deliverables": overdue,
+        "upcoming_milestones": milestones,
         "max_weekly_hours": MAX_WEEKLY_HOURS,
         "budget": {
             "budget_cents": sum(p["budget_cents"] for p in projects),

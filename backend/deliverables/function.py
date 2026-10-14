@@ -12,7 +12,9 @@ Routes (relative to /api/deliverables):
 
 Rules:
 - dependencies must be on the same project and can't form a loop;
-- a deliverable can't be marked done while something it depends on isn't done.
+- a deliverable can't be marked done while something it depends on isn't done;
+- a milestone (``is_milestone``) is a checkpoint with a single date: it needs a
+  due date and has no separate start date.
 """
 
 from shared import audit
@@ -34,6 +36,7 @@ FIELDS = {
     "due_date": Field(kind="date", nullable=True),
     "assignee_id": Field(kind="int", nullable=True, min_value=1),
     "progress_pct": Field(kind="int", min_value=0, max_value=100),
+    "is_milestone": Field(kind="bool"),
 }
 CREATE_SCHEMA = {"project_id": Field(kind="int", required=True, min_value=1), **FIELDS}
 
@@ -179,10 +182,23 @@ def _normalise(data: dict) -> dict:
         data["progress_pct"] = 100
     if "description" in data and data["description"] is None:
         data["description"] = ""
+    if "is_milestone" in data and data["is_milestone"] is None:
+        data["is_milestone"] = False
     for required in ("status", "progress_pct"):
         if required in data and data[required] is None:
             raise bad_request("Validation failed", {required: "is required"})
     return data
+
+
+def _check_milestone(is_milestone: bool, start_date, due_date) -> None:
+    """A milestone is a single date: it needs a due date and no different start date."""
+    if not is_milestone:
+        return
+    if due_date is None:
+        raise bad_request("Validation failed", {"due_date": "a milestone needs a date"})
+    if start_date is not None and start_date != due_date:
+        raise bad_request("Validation failed",
+                          {"start_date": "a milestone has a single date; leave the start date empty"})
 
 
 @router.get("/")
@@ -198,6 +214,9 @@ def list_deliverables(request: Request, cur) -> dict:
         filters.add("is_overdue")
     if choice_param(q, "blocked", ("true", "false")) == "true":
         filters.add("is_blocked")
+    milestone = choice_param(q, "milestone", ("true", "false"))
+    if milestone:
+        filters.eq("is_milestone", milestone == "true")
     due_after = date_param(q, "due_after")
     if due_after:
         filters.add("due_date >= %s", due_after)
@@ -252,24 +271,27 @@ def create_deliverable(request: Request, cur) -> dict:
     check_date_range(data["start_date"], data["due_date"], "start_date", "due_date")
     data = _normalise({k: v for k, v in data.items()
                        if v is not None or k in ("due_date", "start_date", "assignee_id")})
+    is_milestone = data.get("is_milestone", False)
+    _check_milestone(is_milestone, data.get("start_date"), data.get("due_date"))
     _check_assignee(cur, project, data.get("assignee_id"))
     _check_dependencies(cur, project["id"], None, depends_on)
     cur.execute(
         """
         INSERT INTO deliverables (project_id, title, description, status, start_date, due_date, assignee_id,
-                                  progress_pct, created_by)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
+                                  progress_pct, is_milestone, created_by)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s) RETURNING id
         """,
         [project["id"], data["title"], data.get("description", ""), data.get("status", "todo"),
          data.get("start_date"), data.get("due_date"), data.get("assignee_id"), data.get("progress_pct", 0),
-         user["id"]],
+         is_milestone, user["id"]],
     )
     deliverable_id = cur.fetchone()["id"]
     _set_dependencies(cur, user["id"], deliverable_id, depends_on)
     if data.get("status") == "done":
         _check_can_finish(cur, deliverable_id)
     audit.record(cur, user, "deliverable", deliverable_id, "create",
-                 f"added deliverable \"{data['title']}\" to {project['code']}", {**data, "depends_on": depends_on})
+                 f"added {'milestone' if is_milestone else 'deliverable'} \"{data['title']}\" to {project['code']}",
+                 {**data, "depends_on": depends_on})
     return response(201, _load(cur, user, deliverable_id))
 
 
@@ -297,6 +319,8 @@ def update_deliverable(request: Request, cur) -> dict:
     data = _normalise(data)
     check_date_range(data.get("start_date", row["start_date"]), data.get("due_date", row["due_date"]),
                      "start_date", "due_date")
+    _check_milestone(data.get("is_milestone", row["is_milestone"]), data.get("start_date", row["start_date"]),
+                     data.get("due_date", row["due_date"]))
     if "assignee_id" in data and data["assignee_id"] != row["assignee_id"]:
         _check_assignee(cur, project, data["assignee_id"])
     if depends_on is not None:

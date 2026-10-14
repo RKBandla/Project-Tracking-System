@@ -1,6 +1,7 @@
 import { deliverablesApi } from '../../api/services';
 import Badge from '../../components/Badge';
 import { EmptyState, ErrorState, Loading } from '../../components/Feedback';
+import MilestoneMark from '../../components/MilestoneMark';
 import { Card } from '../../components/PageParts';
 import { useAsync } from '../../hooks/useAsync';
 import { formatDate } from '../../utils/format';
@@ -36,7 +37,7 @@ export default function DependencyTab({ project }) {
                   {nodes.map((n) => (
                     <article key={n.id} className={`dep-card status-${n.status} ${n.is_blocked && n.status !== 'done' ? 'blocked' : ''}`}>
                       <header>
-                        <strong>{n.title}</strong>
+                        <strong>{n.is_milestone && <MilestoneMark />} {n.title}</strong>
                         <Badge value={n.status} />
                       </header>
                       <p className="muted">{n.assignee_name || 'Unassigned'} · due {formatDate(n.due_date)}</p>

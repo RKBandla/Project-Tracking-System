@@ -16,7 +16,7 @@ from .auth import hash_password
 
 logger = logging.getLogger(__name__)
 
-SCHEMA_VERSION = 2
+SCHEMA_VERSION = 3  # 3: deliverables.is_milestone
 
 ROLES = ("admin", "manager", "employee")
 PROJECT_STATUSES = ("planned", "active", "on_hold", "completed")
@@ -132,6 +132,7 @@ CREATE TABLE IF NOT EXISTS deliverables (
     due_date     DATE,
     assignee_id  INTEGER REFERENCES users (id),
     progress_pct INTEGER      NOT NULL DEFAULT 0 CHECK (progress_pct BETWEEN 0 AND 100),
+    is_milestone BOOLEAN      NOT NULL DEFAULT FALSE,
     is_archived  BOOLEAN      NOT NULL DEFAULT FALSE,
     archived_at  TIMESTAMPTZ,
     created_by   INTEGER REFERENCES users (id),
@@ -140,6 +141,8 @@ CREATE TABLE IF NOT EXISTS deliverables (
     CHECK (due_date IS NULL OR start_date IS NULL OR due_date >= start_date)
 );
 CREATE INDEX IF NOT EXISTS deliverables_project_idx ON deliverables (project_id, status);
+-- Version 3: milestones are deliverables marked with a single date
+ALTER TABLE deliverables ADD COLUMN IF NOT EXISTS is_milestone BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS deliverable_dependencies (
     id             SERIAL PRIMARY KEY,

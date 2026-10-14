@@ -3,11 +3,13 @@ import { DELIVERABLE_STATUSES } from '../../utils/constants';
 import { label } from '../../utils/format';
 import { Alert } from '../Feedback';
 import FormField from '../FormField';
+import MilestoneMark from '../MilestoneMark';
 import { Modal } from '../Modal';
 
 /**
  * Create or edit a deliverable, including what it depends on. The server refuses
  * links that would form a loop and "done" while a dependency is unfinished.
+ * A milestone is a checkpoint with a single date, so it has no start date.
  *
  * @param {{project: object, deliverable?: object, assignees: {id: number, name: string}[],
  *          others: object[], onSave: Function, onClose: Function}} props
@@ -22,6 +24,7 @@ export default function DeliverableForm({ project, deliverable, assignees, other
     assignee_id: deliverable?.assignee_id ?? '',
     progress_pct: deliverable?.progress_pct ?? 0,
     depends_on: deliverable?.depends_on || [],
+    is_milestone: deliverable?.is_milestone ?? false,
   });
   const candidates = others.filter((d) => d.id !== deliverable?.id);
 
@@ -30,11 +33,12 @@ export default function DeliverableForm({ project, deliverable, assignees, other
       title: v.title,
       description: v.description,
       status: v.status,
-      start_date: emptyToNull(v.start_date),
+      start_date: v.is_milestone ? null : emptyToNull(v.start_date),
       due_date: emptyToNull(v.due_date),
       assignee_id: toNumber(v.assignee_id),
       progress_pct: toNumber(v.progress_pct) ?? 0,
       depends_on: v.depends_on,
+      is_milestone: Boolean(v.is_milestone),
     };
     if (!deliverable) body.project_id = project.id;
     await onSave(body);
@@ -51,7 +55,7 @@ export default function DeliverableForm({ project, deliverable, assignees, other
 
   return (
     <Modal
-      title={deliverable ? 'Edit deliverable' : 'New deliverable'}
+      title={deliverable ? `Edit ${deliverable.is_milestone ? 'milestone' : 'deliverable'}` : 'New deliverable'}
       onClose={onClose}
       size="lg"
       footer={(
@@ -71,6 +75,14 @@ export default function DeliverableForm({ project, deliverable, assignees, other
         <FormField label="Description" error={errors.description} className="span-all">
           <textarea {...bind('description')} rows={2} />
         </FormField>
+        <div className="field checkbox-field span-all">
+          <label>
+            <input type="checkbox" checked={Boolean(values.is_milestone)}
+              onChange={(e) => setValue('is_milestone', e.target.checked)} />
+            <MilestoneMark /> Milestone
+          </label>
+          <p className="field-hint">A key checkpoint with one date, such as “Design approved” or “Go-live”.</p>
+        </div>
         <FormField label="Status" error={errors.status}>
           <select {...bind('status')} onChange={onStatus}>
             {DELIVERABLE_STATUSES.map((s) => <option key={s} value={s}>{label(s)}</option>)}
@@ -82,10 +94,13 @@ export default function DeliverableForm({ project, deliverable, assignees, other
             {assignees.map((a) => <option key={a.id} value={a.id}>{a.name}</option>)}
           </select>
         </FormField>
-        <FormField label="Start date" error={errors.start_date}>
-          <input type="date" {...bind('start_date')} />
-        </FormField>
-        <FormField label="Due date" error={errors.due_date}>
+        {!values.is_milestone && (
+          <FormField label="Start date" error={errors.start_date}>
+            <input type="date" {...bind('start_date')} />
+          </FormField>
+        )}
+        <FormField label={values.is_milestone ? 'Milestone date' : 'Due date'} required={Boolean(values.is_milestone)}
+          error={errors.due_date || (values.is_milestone ? errors.start_date : undefined)}>
           <input type="date" {...bind('due_date')} />
         </FormField>
         <FormField label={`Progress (${values.progress_pct || 0}%)`} error={errors.progress_pct} className="span-all">

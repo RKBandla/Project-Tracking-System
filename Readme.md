@@ -21,7 +21,7 @@ Local:  Vite :3000 ─► proxy :3001 ─► LocalStack Lambdas ─► local Pos
 | Authentication and authorization | Log in with a username (first and last name) or email, and a password; signed JWT that expires (1 h, refreshable for 7 days); passwords hashed (PBKDF2) |
 | Role-based access control | Admin, Manager, Employee — the server checks the role on every request |
 | CRUD for projects | Create, view, edit, archive and reactivate |
-| CRUD for deliverables | Same, per project, plus "depends on" links between deliverables |
+| CRUD for deliverables | Same, per project, plus "depends on" links between deliverables; any deliverable can be marked as a **milestone** (a checkpoint with a single date, shown as ◆) |
 | CRUD for resources | Book a person onto a project for N hours per week over a date range |
 | CRUD for budget tracking | A budget per project; planned cost comes from bookings, consumed cost from approved logged hours |
 | Search and filter | Name search and status filter on every list, done on the server, paginated |
@@ -49,7 +49,7 @@ Nobody changes their own role or salary.
 1. **Nobody is booked over 40 hours in any week**, across all projects. The 41st hour is refused (409) and the response names the conflicting projects.
 2. **Nothing is deleted.** Records are archived (or withdrawn) and can be reactivated, so cost history survives. There is no DELETE route.
 3. **Deliverable dependencies can't loop.** A link that would create a cycle is refused and the loop is named.
-4. **A deliverable can't be marked done while something it depends on isn't.**
+4. **A deliverable can't be marked done while something it depends on isn't.** A milestone needs a date and has no separate start date.
 5. **Money is whole cents.** Budgets, salaries and costs are integers on the server, formatted only on screen.
 6. **Only approved hours count as consumed.**
 7. **Every change is recorded.** Each create, edit or archive writes one audit-log row, and everyone above the actor in the reporting line gets an in-app notification.
@@ -75,7 +75,7 @@ Login · Dashboard (status, at-risk with reasons, budget, capacity) · Projects 
 | What is the status of each active project? | Projects list, status column |
 | Which projects are at risk of missing deadlines? | Dashboard "At risk" panel, with the reason |
 | How are resources allocated across projects? | Allocation grid: people down, weeks across |
-| What are the key deliverables and their completion status? | Deliverables tab: list and timeline |
+| What are the key deliverables and their completion status? | Deliverables tab: list and timeline (milestones as ◆); dashboard "Upcoming milestones" |
 | Which team members are over-allocated? | Allocation grid: cells at/over 40 h flagged; dashboard "Fully booked" |
 | What is the dependency chain between deliverables? | Dependencies tab on the project |
 | How much budget is consumed versus planned? | Budget bar on the project, projects list and dashboard |
@@ -113,7 +113,7 @@ All endpoints take and return JSON and require `Authorization: Bearer <access to
 | `/api/projects` | `GET /`, `POST /`, `GET /dashboard`, `GET|PUT /{id}`, `POST /{id}/archive`, `POST /{id}/reactivate`, `GET /{id}/summary` |
 | `/api/project-requests` | `GET /`, `POST /`, `GET|PUT /{id}`, `POST /{id}/withdraw`, `POST /{id}/approve`, `POST /{id}/reject` |
 | `/api/assignments` | `GET /`, `GET /grid`, `POST /`, `GET|PUT /{id}`, `POST /{id}/archive`, `POST /{id}/reactivate` |
-| `/api/deliverables` | `GET /`, `GET /graph`, `POST /`, `GET|PUT /{id}` (incl. `depends_on`), `POST /{id}/archive`, `POST /{id}/reactivate` |
+| `/api/deliverables` | `GET /` (`?milestone=true`), `GET /graph`, `POST /`, `GET|PUT /{id}` (incl. `depends_on`, `is_milestone`), `POST /{id}/archive`, `POST /{id}/reactivate` |
 | `/api/budgets` | `GET /`, `GET /{project id}`, `PUT /{project id}` |
 | `/api/timesheets` | `GET /`, `GET /week`, `POST /`, `PUT /{id}`, `POST /{id}/withdraw`, `POST /{id}/approve`, `POST /{id}/reject`, `POST /approve-batch` |
 | `/api/activity` | `GET /notifications`, `POST /notifications/read-all`, `POST /notifications/{id}/read`, `GET /audit` |

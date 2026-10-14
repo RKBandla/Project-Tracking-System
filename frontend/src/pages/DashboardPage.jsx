@@ -3,6 +3,7 @@ import { useAuth } from '../auth/useAuth';
 import Badge from '../components/Badge';
 import BudgetBar from '../components/BudgetBar';
 import { EmptyState, ErrorState, Loading } from '../components/Feedback';
+import MilestoneMark from '../components/MilestoneMark';
 import { Card, PageHeader, StatCard } from '../components/PageParts';
 import { useAsync } from '../hooks/useAsync';
 import { Link } from '../router/Router';
@@ -64,6 +65,22 @@ function DeliverableList({ items }) {
   );
 }
 
+function MilestoneList({ items }) {
+  if (!items.length) return <EmptyState title="No open milestones in the next 90 days" />;
+  return (
+    <ul className="item-list">
+      {items.map((m) => (
+        <li key={m.id}>
+          <Link to={`/projects/${m.project_id}?tab=deliverables`} className="item-link">
+            <span><MilestoneMark /> <strong>{m.title}</strong><span className="muted"> {m.project_name}</span></span>
+            <span className={`due ${m.is_missed ? 'overdue' : ''}`}>{formatDate(m.due_date)}{m.is_missed ? ' · missed' : ''}</span>
+          </Link>
+        </li>
+      ))}
+    </ul>
+  );
+}
+
 /** Role-specific overview: status, risk with reasons, deadlines, budget, capacity, approvals. */
 export default function DashboardPage() {
   const { user } = useAuth();
@@ -113,6 +130,9 @@ export default function DashboardPage() {
         </Card>
         <Card title={isEmployee ? 'My upcoming deliverables' : 'Due in the next 14 days'}>
           <DeliverableList items={data.upcoming_deliverables} />
+        </Card>
+        <Card title="Upcoming milestones">
+          <MilestoneList items={data.upcoming_milestones || []} />
         </Card>
         {isEmployee ? (
           <Card title="My bookings">
