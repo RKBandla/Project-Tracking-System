@@ -24,6 +24,30 @@ class TestAuth:
         assert res.status == 400
         assert set(res.json["error"]["details"]) == {"email", "password"}
         assert api.call("auth", "POST", "/login", raw_body="{nope").status == 400
+        res = api.call("auth", "POST", "/login", {"password": "x"})
+        assert res.status == 400 and set(res.json["error"]["details"]) == {"login"}
+
+    def test_login_with_username_or_email(self, api, make_user):
+        emp = make_user(first_name="Grace", last_name="Hopper")
+        for login in ("Grace Hopper", "  grace   HOPPER ", "grace.hopper@example.com", "GRACE.HOPPER@EXAMPLE.COM"):
+            res = api.call("auth", "POST", "/login", {"login": login, "password": emp["password"]})
+            assert res.status == 200 and res.json["user"]["id"] == emp["id"], login
+        bad = api.call("auth", "POST", "/login", {"login": "Grace Hopper", "password": "wrong1"})
+        unknown = api.call("auth", "POST", "/login", {"login": "Nobody Here", "password": "wrong1"})
+        assert bad.status == unknown.status == 401 and bad.json == unknown.json
+
+    def test_shared_names_are_told_apart_by_password(self, api, make_user):
+        first = make_user(first_name="Sam", last_name="Lee", email="sam.lee@example.com")
+        second = make_user(first_name="Sam", last_name="Lee", email="sl@example.com")
+        for person in (first, second):
+            res = api.call("auth", "POST", "/login", {"login": "Sam Lee", "password": person["password"]})
+            assert res.status == 200 and res.json["user"]["id"] == person["id"]
+        with db.cursor() as cur:  # same password on both: ambiguous, so ask for the email
+            cur.execute("UPDATE users SET password_hash = (SELECT password_hash FROM users WHERE id = %s) "
+                        "WHERE id = %s", [first["id"], second["id"]])
+        res = api.call("auth", "POST", "/login", {"login": "Sam Lee", "password": first["password"]})
+        assert res.status == 401 and "email" in res.json["error"]["message"]
+        assert api.login("sl@example.com", first["password"])
 
     def test_refresh_and_token_types(self, api):
         login = api.call("auth", "POST", "/login", {"email": ADMIN_EMAIL, "password": ADMIN_PASSWORD}).json
@@ -50,19 +74,19 @@ class TestAuth:
 class TestUserCreation:
     def test_admin_creates_user_with_generated_credentials(self, api, admin):
         res = api.call("users", "POST", "/", {
-            "first_name": "Ada", "last_name": "Lovelace", "email": "ADA@Example.com",
+            "first_name": "Ada", "last_name": "Lovelace", "email": "ADA.Lovelace@Example.com",
             "job_title": "Engineer", "salary_cents": 8_500_000, "role": "employee",
         }, token=admin["token"])
         assert res.status == 201
         assert res.json["employee_id"] == "EMP0001"
         password = res.json["temporary_password"]
         assert len(password) == 6 and password.isalnum()
-        assert res.json["user"]["email"] == "ada@example.com" and res.json["user"]["salary_cents"] == 8_500_000
+        assert res.json["user"]["email"] == "ada.lovelace@example.com" and res.json["user"]["salary_cents"] == 8_500_000
         with db.cursor() as cur:
             cur.execute("SELECT password_hash FROM users WHERE id = %s", [res.json["user"]["id"]])
             stored = cur.fetchone()["password_hash"]
         assert password not in stored and stored.startswith("pbkdf2_sha256$")
-        assert api.login("ada@example.com", password)
+        assert api.login("ada.lovelace@example.com", password)
 
     def test_money_must_be_whole_cents(self, api, admin):
         res = api.call("users", "POST", "/", {"first_name": "A", "last_name": "B", "email": "a@b.com",
@@ -78,23 +102,53 @@ class TestUserCreation:
         assert api.call("users", "POST", "/", body, token=emp["token"]).status == 403
 
     def test_duplicate_email(self, api, admin, make_user):
-        make_user(email="dup@example.com")
-        res = api.call("users", "POST", "/", {"first_name": "X", "last_name": "Y", "email": "DUP@example.com",
+        make_user(first_name="Dup", last_name="Licate", email="dup.licate@example.com")
+        res = api.call("users", "POST", "/", {"first_name": "Dup", "last_name": "Licate",
+                                              "email": "DUP.LICATE@example.com",
                                               "job_title": "T", "role": "employee"}, token=admin["token"])
         assert res.status == 409
 
     def test_manager_reference_validated(self, api, admin, make_user):
         emp = make_user()
-        res = api.call("users", "POST", "/", {"first_name": "X", "last_name": "Y", "email": "x@y.com",
+        res = api.call("users", "POST", "/", {"first_name": "X", "last_name": "Y", "email": "xy@y.com",
                                               "job_title": "T", "role": "employee", "manager_id": emp["id"]},
                        token=admin["token"])
         assert res.status == 400 and "manager_id" in res.json["error"]["details"]
 
 
+class TestEmailRule:
+    BODY = {"first_name": "Eli", "last_name": "Engineer", "job_title": "T", "role": "employee"}
+
+    def test_email_must_be_full_name_or_initials(self, api, admin):
+        for email in ("eli@example.com", "engineer@example.com", "bob@example.com", "e@example.com"):
+            res = api.call("users", "POST", "/", {**self.BODY, "email": email}, token=admin["token"])
+            assert res.status == 400 and "eli.engineer@" in res.json["error"]["details"]["email"], email
+        for n, email in enumerate(("eli.engineer@a.com", "EliEngineer@b.com", "eli_engineer@c.com", "ee@d.com")):
+            res = api.call("users", "POST", "/", {**self.BODY, "email": email}, token=admin["token"])
+            assert res.status == 201, (n, res)
+
+    def test_changing_the_name_or_email_rechecks_the_rule(self, api, admin, make_user):
+        emp = make_user(first_name="Eli", last_name="Engineer")
+        res = api.call("users", "PUT", "/me", {"last_name": "Smith"}, token=emp["token"])
+        assert res.status == 400 and "email" in res.json["error"]["details"]
+        res = api.call("users", "PUT", "/me", {"last_name": "Smith", "email": "es@example.com"}, token=emp["token"])
+        assert res.status == 200
+        res = api.call("users", "PUT", f"/{emp['id']}", {"email": "someone@example.com"}, token=admin["token"])
+        assert res.status == 400
+        assert api.call("users", "PUT", f"/{emp['id']}", {"email": "eli.smith@example.com"},
+                        token=admin["token"]).status == 200
+
+    def test_unchanged_name_and_email_are_not_rechecked(self, api, admin):
+        # The seeded admin's email (admin@...) predates the rule; editing other fields still works
+        body = {"first_name": admin["first_name"], "email": admin["email"], "job_title": "Boss"}
+        assert api.call("users", "PUT", "/me", {"first_name": admin["first_name"]}, token=admin["token"]).status == 200
+        assert api.call("users", "PUT", f"/{admin['id']}", body, token=admin["token"]).status == 200
+
+
 class TestUpdates:
     def test_everyone_edits_own_name_and_email_only(self, api, admin, make_user):
         for person in (make_user(), make_user(role="manager"), admin):
-            res = api.call("users", "PUT", "/me", {"first_name": "New", "email": f"new{person['id']}@x.com"},
+            res = api.call("users", "PUT", "/me", {"first_name": "New", "email": f"new.{person['last_name'].lower()}@x.com"},
                            token=person["token"])
             assert res.status == 200 and res.json["first_name"] == "New"
             for field, value in (("job_title", "CEO"), ("salary_cents", 1), ("role", "admin"), ("manager_id", None)):

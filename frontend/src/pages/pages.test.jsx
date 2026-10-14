@@ -334,12 +334,13 @@ describe('People', () => {
     const dialog = screen.getByRole('dialog', { name: 'New user' });
     await user.type(within(dialog).getByLabelText(/First name/), 'Nia');
     await user.type(within(dialog).getByLabelText(/Last name/), 'New');
-    await user.type(within(dialog).getByLabelText(/Email/), 'nia@x.com');
+    expect(within(dialog).getByText('Use the full name or initials: nia.new@… or nn@…')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/Email/), 'nia.new@x.com');
     await user.type(within(dialog).getByLabelText(/Job title/), 'Analyst');
     await user.type(within(dialog).getByLabelText(/salary/), '104000');
     await user.click(within(dialog).getByRole('button', { name: 'Create user' }));
     const creds = await screen.findByRole('dialog', { name: 'User created' });
-    expect(within(creds).getByText('nia@x.com')).toBeInTheDocument();
+    expect(within(creds).getByText('nia.new@x.com')).toBeInTheDocument();
     expect(within(creds).getByText('aB3dE9')).toBeInTheDocument();
     expect(sent.salary_cents).toBe(10400000);
   });

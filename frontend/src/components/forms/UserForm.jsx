@@ -2,7 +2,7 @@ import { usersApi } from '../../api/services';
 import { ROLES } from '../../auth/permissions';
 import { useAsync } from '../../hooks/useAsync';
 import { toNumber, useForm } from '../../hooks/useForm';
-import { centsToDollars, dollarsToCents, label } from '../../utils/format';
+import { centsToDollars, dollarsToCents, emailRuleHint, label } from '../../utils/format';
 import { Alert } from '../Feedback';
 import FormField from '../FormField';
 import { Modal } from '../Modal';
@@ -19,7 +19,7 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
   const { data: people } = useAsync(() => usersApi.list({ is_active: 'true', page_size: 100, sort: 'name' }), 'managers');
   const managers = (people?.items || []).filter((p) => p.role !== 'employee' && p.id !== user?.id);
 
-  const { bind, errors, formError, busy, handleSubmit } = useForm({
+  const { values, bind, errors, formError, busy, handleSubmit } = useForm({
     first_name: user?.first_name || '',
     last_name: user?.last_name || '',
     email: user?.email || '',
@@ -74,7 +74,7 @@ export default function UserForm({ user, currentUserId, onSave, onClose }) {
         <FormField label="Last name" required error={errors.last_name}>
           <input {...bind('last_name')} maxLength={100} autoComplete="off" />
         </FormField>
-        <FormField label="Email" required error={errors.email}>
+        <FormField label="Email" required error={errors.email} hint={emailRuleHint(values.first_name, values.last_name)}>
           <input type="email" {...bind('email')} autoComplete="off" />
         </FormField>
         <FormField label="Job title" required error={errors.job_title}>

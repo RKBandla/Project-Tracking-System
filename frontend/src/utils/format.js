@@ -135,3 +135,19 @@ export function today() {
 export function fieldErrors(error) {
   return error && typeof error.details === 'object' && !Array.isArray(error.details) ? error.details : {};
 }
+
+/** Lower-case letters and digits only ("O'Neil" -> "oneil"), as the server compares names. */
+function nameLetters(text) {
+  return String(text || '').toLowerCase().replace(/[^\p{L}\p{N}]/gu, '');
+}
+
+/**
+ * Hint for the email rule: the part before @ must be the full name or the initials.
+ * e.g. ("Eli", "Engineer") -> "Use the full name or initials: eli.engineer@… or ee@…"
+ */
+export function emailRuleHint(firstName, lastName) {
+  const first = nameLetters(firstName);
+  const last = nameLetters(lastName);
+  if (!first || !last) return 'Made from the first and last name, e.g. jane.doe@… or jd@…';
+  return `Use the full name or initials: ${first}.${last}@… or ${first[0]}${last[0]}@…`;
+}

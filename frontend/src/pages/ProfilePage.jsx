@@ -9,7 +9,7 @@ import { Card, DetailList, PageHeader } from '../components/PageParts';
 import { useAsync } from '../hooks/useAsync';
 import { useForm } from '../hooks/useForm';
 import { Link } from '../router/Router';
-import { formatDate, formatCents, initials } from '../utils/format';
+import { emailRuleHint, formatDate, formatCents, initials } from '../utils/format';
 
 /** The signed-in user's details. Only first name, last name and email are editable. */
 export default function ProfilePage() {
@@ -19,7 +19,7 @@ export default function ProfilePage() {
     () => (user.role === 'admin' ? Promise.resolve(null) : usersApi.workload(user.id)),
     `workload-${user.id}`,
   );
-  const { bind, errors, formError, busy, handleSubmit } = useForm({
+  const { values, bind, errors, formError, busy, handleSubmit } = useForm({
     first_name: user.first_name,
     last_name: user.last_name,
     email: user.email,
@@ -58,7 +58,7 @@ export default function ProfilePage() {
 
         <Card title="Edit personal information">
           <form className="form-stack" onSubmit={submit} noValidate>
-            <p className="muted">You can change your name and email (your email is how you sign in). Nobody can change their own role or salary.</p>
+            <p className="muted">You can change your name and email (you sign in with either). Your email must match your name. Nobody can change their own role or salary.</p>
             {saved && <Alert kind="success">Your details have been saved.</Alert>}
             {formError && <Alert kind="error">{formError}</Alert>}
             <FormField label="First name" required error={errors.first_name}>
@@ -67,7 +67,7 @@ export default function ProfilePage() {
             <FormField label="Last name" required error={errors.last_name}>
               <input {...bind('last_name')} maxLength={100} autoComplete="family-name" />
             </FormField>
-            <FormField label="Email" required error={errors.email}>
+            <FormField label="Email" required error={errors.email} hint={emailRuleHint(values.first_name, values.last_name)}>
               <input type="email" {...bind('email')} autoComplete="email" />
             </FormField>
             <div>

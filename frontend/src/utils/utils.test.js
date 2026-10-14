@@ -1,7 +1,7 @@
 import { describe, expect, it } from 'vitest';
 import { matchPath } from '../router/routing';
 import {
-  addDays, centsToDollars, dollarsToCents, fieldErrors, formatCents, formatDate, formatHours, formatMoney,
+  addDays, centsToDollars, dollarsToCents, emailRuleHint, fieldErrors, formatCents, formatDate, formatHours, formatMoney,
   initials, label, mondayOf, timeAgo, today,
 } from './format';
 
@@ -64,6 +64,11 @@ describe('format helpers', () => {
     expect(fieldErrors({ details: { name: 'is required' } })).toEqual({ name: 'is required' });
     expect(fieldErrors({ details: [1] })).toEqual({});
     expect(fieldErrors(null)).toEqual({});
+  });
+
+  it('describes the email rule from the name', () => {
+    expect(emailRuleHint('Mary Ann', "O'Neil")).toBe('Use the full name or initials: maryann.oneil@… or mo@…');
+    expect(emailRuleHint('', 'Doe')).toMatch(/^Made from the first and last name/);
   });
 });
 

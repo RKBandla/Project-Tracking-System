@@ -3,10 +3,10 @@ import { useAuth } from '../auth/useAuth';
 import FormField from '../components/FormField';
 import { Alert } from '../components/Feedback';
 
-/** Sign-in with email and password. */
+/** Sign-in with a username (first and last name) or email, and a password. */
 export default function LoginPage() {
   const { login } = useAuth();
-  const [email, setEmail] = useState('');
+  const [username, setUsername] = useState('');
   const [password, setPassword] = useState('');
   const [error, setError] = useState('');
   const [busy, setBusy] = useState(false);
@@ -16,9 +16,9 @@ export default function LoginPage() {
     setError('');
     setBusy(true);
     try {
-      await login(email.trim(), password);
+      await login(username.trim(), password);
     } catch (err) {
-      setError(err.status === 400 ? 'Enter your email address and password.' : err.message);
+      setError(err.status === 400 ? 'Enter your username or email, and your password.' : err.message);
       setBusy(false);
     }
   };
@@ -44,15 +44,17 @@ export default function LoginPage() {
       <main className="login-panel">
         <form className="login-form" onSubmit={onSubmit} noValidate>
           <h1>Sign in</h1>
-          <p className="muted">Use your work email and the password provided by your administrator.</p>
+          <p className="muted">Use your full name or your work email, and the password provided by your administrator.</p>
           {error && <Alert kind="error">{error}</Alert>}
-          <FormField label="Email" required>
+          <FormField label="Username or email" required hint="Your first and last name (e.g. Jane Doe) or your work email.">
             <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
+              type="text"
+              value={username}
+              onChange={(e) => setUsername(e.target.value)}
               autoComplete="username"
-              placeholder="you@company.com"
+              autoCapitalize="words"
+              spellCheck={false}
+              placeholder="Jane Doe or jane.doe@company.com"
             />
           </FormField>
           <FormField label="Password" required>
