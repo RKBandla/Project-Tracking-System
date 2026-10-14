@@ -148,6 +148,44 @@ describe('Project detail', () => {
     await waitFor(() => expect(screen.queryAllByText('Design').filter((el) => el.closest('tbody'))).toHaveLength(0));
   });
 
+  it('milestones: single date in the form, diamond on the list and timeline, type filter', async () => {
+    const items = [
+      { id: 1, title: 'Build', status: 'in_progress', depends_on: [], is_blocked: false, progress_pct: 50, start_date: '2026-02-01', due_date: '2026-03-01', is_archived: false, is_milestone: false },
+      { id: 2, title: 'Go-live', status: 'todo', depends_on: [1], is_blocked: true, progress_pct: 0, start_date: null, due_date: '2026-01-15', is_archived: false, is_milestone: true, is_overdue: true },
+    ];
+    let sent = null;
+    const queries = [];
+    const { user } = renderApp({
+      as: USERS.manager,
+      path: '/projects/7?tab=deliverables',
+      routes: {
+        'GET /api/projects/7/summary': summary(),
+        'GET /api/deliverables': ({ url }) => { queries.push(url); return page(items); },
+        'POST /api/deliverables': ({ body }) => { sent = body; return { status: 201, body: { ...body, id: 3 } }; },
+      },
+    });
+    const goLive = (await screen.findAllByText('Go-live')).find((el) => el.closest('tbody')).closest('tr');
+    expect(within(goLive).getByRole('img', { name: 'Milestone' })).toBeInTheDocument();
+    expect(within(goLive).getByText(/missed/)).toBeInTheDocument();
+
+    await user.selectOptions(screen.getByLabelText('Filter by type'), 'true');
+    await waitFor(() => expect(queries.at(-1)).toContain('milestone=true'));
+
+    await user.click(screen.getByRole('button', { name: 'Timeline' }));
+    const timeline = screen.getByRole('list', { name: 'Deliverable timeline' });
+    expect(timeline.querySelector('.timeline-milestone')).toHaveAttribute('title', expect.stringContaining('milestone on'));
+
+    await user.click(screen.getByRole('button', { name: 'New deliverable' }));
+    const dialog = screen.getByRole('dialog');
+    expect(within(dialog).getByLabelText('Start date')).toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/Title/), 'Beta');
+    await user.click(within(dialog).getByRole('checkbox', { name: /Milestone/ }));
+    expect(within(dialog).queryByLabelText('Start date')).not.toBeInTheDocument();
+    await user.type(within(dialog).getByLabelText(/Milestone date/), '2026-04-01');
+    await user.click(within(dialog).getByRole('button', { name: 'Save' }));
+    await waitFor(() => expect(sent).toMatchObject({ title: 'Beta', is_milestone: true, start_date: null, due_date: '2026-04-01' }));
+  });
+
   it('dependency view orders deliverables by what they wait on', async () => {
     renderApp({
       as: USERS.employee,

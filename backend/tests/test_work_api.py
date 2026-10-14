@@ -145,6 +145,29 @@ class TestDeliverables:
         res = api.call("deliverables", "PUT", f"/{b['id']}", {"status": "done"}, token=t)
         assert res.status == 200 and res.json["progress_pct"] == 100 and not res.json["is_blocked"]
 
+    def test_milestones(self, api, team):
+        t, pid = team["mgr"]["token"], team["p1"]["id"]
+        due = str(TODAY + timedelta(days=10))
+        res = api.call("deliverables", "POST", "/", {"project_id": pid, "title": "Go-live", "is_milestone": True},
+                       token=t)
+        assert res.status == 400 and "due_date" in res.json["error"]["details"]
+        res = api.call("deliverables", "POST", "/", {"project_id": pid, "title": "Go-live", "is_milestone": True,
+                                                     "due_date": due, "start_date": str(TODAY)}, token=t)
+        assert res.status == 400 and "start_date" in res.json["error"]["details"]
+        milestone = self.create(api, t, team["p1"], "Go-live", is_milestone=True, due_date=due)
+        assert milestone["is_milestone"] and milestone["start_date"] is None
+        work = self.create(api, t, team["p1"], "Build", start_date=str(TODAY), due_date=due)
+        assert work["is_milestone"] is False
+        get = lambda **q: [d["title"] for d in api.call("deliverables", "GET", "/", token=t, query=q).json["items"]]  # noqa: E731
+        assert get(milestone="true") == ["Go-live"] and get(milestone="false") == ["Build"]
+        # A ranged deliverable becomes a milestone only once its start date is cleared
+        assert api.call("deliverables", "PUT", f"/{work['id']}", {"is_milestone": True}, token=t).status == 400
+        res = api.call("deliverables", "PUT", f"/{work['id']}", {"is_milestone": True, "start_date": None}, token=t)
+        assert res.status == 200 and res.json["is_milestone"]
+        assert api.call("deliverables", "PUT", f"/{milestone['id']}", {"due_date": None}, token=t).status == 400
+        res = api.call("deliverables", "PUT", f"/{milestone['id']}", {"is_milestone": None}, token=t)
+        assert res.status == 200 and res.json["is_milestone"] is False
+
     def test_archive_instead_of_delete(self, api, team):
         t = team["mgr"]["token"]
         a = self.create(api, t, team["p1"], "Design")

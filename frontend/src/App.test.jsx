@@ -90,6 +90,17 @@ describe('dashboard', () => {
     expect(screen.getByText('Eve Employee')).toBeInTheDocument();
   });
 
+  it('lists upcoming and missed milestones', async () => {
+    const milestones = [
+      { id: 4, title: 'Beta', due_date: '2026-01-05', project_id: 7, project_name: 'Apollo', is_missed: true },
+      { id: 5, title: 'Go-live', due_date: '2099-01-05', project_id: 7, project_name: 'Apollo', is_missed: false },
+    ];
+    renderApp({ as: USERS.manager, routes: { 'GET /api/projects/dashboard': dashboard('manager', { upcoming_milestones: milestones }) } });
+    const card = (await screen.findByRole('heading', { name: 'Upcoming milestones' })).closest('section, div.card, article') || document.body;
+    expect(within(card).getByRole('link', { name: /Beta.*missed/ })).toHaveAttribute('href', '/projects/7?tab=deliverables');
+    expect(within(card).getByRole('link', { name: /Go-live/ })).not.toHaveTextContent('missed');
+  });
+
   it('employee sees bookings and logged hours', async () => {
     renderApp({ as: USERS.employee, routes: { 'GET /api/projects/dashboard': dashboard('employee') } });
     expect(await screen.findByText('24 h')).toBeInTheDocument();

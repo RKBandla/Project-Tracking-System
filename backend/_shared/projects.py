@@ -35,6 +35,9 @@ _BASE = f"""
            (SELECT count(*) FROM deliverables d
              WHERE d.project_id = p.id AND NOT d.is_archived AND d.status <> 'done'
                AND d.due_date < CURRENT_DATE) AS overdue_deliverables,
+           (SELECT count(*) FROM deliverables d
+             WHERE d.project_id = p.id AND NOT d.is_archived AND d.status <> 'done' AND d.is_milestone
+               AND d.due_date < CURRENT_DATE) AS missed_milestones,
            COALESCE((SELECT SUM({PLANNED_COST_SQL}) FROM project_assignments a JOIN users u ON u.id = a.user_id
                       WHERE a.project_id = p.id AND NOT a.is_archived), 0)::bigint AS planned_cents,
            COALESCE((SELECT SUM({CONSUMED_COST_SQL}) FROM time_entries t JOIN users u ON u.id = t.user_id
@@ -79,7 +82,9 @@ def risk_reasons(project: dict) -> list[str]:
         reasons.append(f"Past its end date ({project['end_date'].isoformat()}) and not completed")
     overdue = project.get("overdue_deliverables") or 0
     if overdue:
-        reasons.append(f"{overdue} overdue deliverable{'s' if overdue != 1 else ''}")
+        missed = project.get("missed_milestones") or 0
+        note = f" ({missed} missed milestone{'s' if missed != 1 else ''})" if missed else ""
+        reasons.append(f"{overdue} overdue deliverable{'s' if overdue != 1 else ''}{note}")
     if project.get("over_burn"):
         consumed = float(project["consumed_share"]) * 100
         elapsed = float(project["elapsed_share"] if project["elapsed_share"] is not None else 1) * 100

@@ -195,6 +195,21 @@ class TestSummaryAndDashboard:
         assert b["consumed_cents"] == 10 * 5000 and b["remaining_cents"] == 100_000_00 - 50_000
         assert res.json["at_risk"] and "2 overdue deliverables" in res.json["risk_reasons"]
 
+    def test_milestones_on_dashboard_and_in_risk_reasons(self, api, admin, project_factory):
+        p, t = project_factory(name="Launch"), admin["token"]
+        for title, days in (("Beta", -2), ("Go-live", 20), ("Far away", 120)):
+            res = api.call("deliverables", "POST", "/", {"project_id": p["id"], "title": title, "is_milestone": True,
+                                                         "due_date": str(TODAY + timedelta(days=days))}, token=t)
+            assert res.status == 201
+        api.call("deliverables", "POST", "/", {"project_id": p["id"], "title": "Spec",
+                                               "due_date": str(TODAY + timedelta(days=5))}, token=t)
+        d = api.call("projects", "GET", "/dashboard", token=t).json
+        assert [(m["title"], m["is_missed"]) for m in d["upcoming_milestones"]] == [("Beta", True), ("Go-live", False)]
+        res = api.call("projects", "GET", f"/{p['id']}", token=t).json
+        assert res["at_risk"] and res["risk_reasons"] == ["1 overdue deliverable (1 missed milestone)"]
+        audit = api.call("activity", "GET", "/audit", token=t, query={"q": "milestone"}).json
+        assert audit["total"] == 3
+
     def test_dashboards(self, api, admin, team, assign, project_factory):
         mgr, emp = team["mgr"], team["emp"]
         assign(mgr["token"], team["project"], emp, 40)

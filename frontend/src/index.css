@@ -582,3 +582,13 @@ thead .alloc-person { z-index: 2; background: var(--surface-2); }
   .dep-column { flex-basis: 210px; }
   .budget-bar-compact { width: 60%; }
 }
+
+/* Milestones: a diamond on lists and a diamond on the timeline instead of a bar */
+.milestone-mark { color: var(--accent); font-size: 0.9em; line-height: 1; }
+.timeline-milestone {
+  position: absolute; top: 3px; width: 14px; height: 14px; margin-left: -7px;
+  transform: rotate(45deg); background: var(--accent); border: 2px solid var(--surface);
+  box-shadow: 0 0 0 1px var(--accent);
+}
+.timeline-milestone.status-done { background: var(--success); box-shadow: 0 0 0 1px var(--success); }
+.timeline-milestone.overdue { background: var(--danger); box-shadow: 0 0 0 1px var(--danger); }

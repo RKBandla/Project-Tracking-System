@@ -119,8 +119,8 @@ def main() -> int:
     tests = deliverable(mia, portal, "Acceptance testing", assignee_id=sara["id"],
                         start_date=str(monday + timedelta(weeks=6)), due_date=str(monday + timedelta(weeks=9)),
                         depends_on=[ui["id"]])
-    deliverable(mia, portal, "Go-live", start_date=str(monday + timedelta(weeks=9)),
-                due_date=str(monday + timedelta(weeks=10)), depends_on=[tests["id"]])
+    deliverable(mia, portal, "Go-live", is_milestone=True, due_date=str(monday + timedelta(weeks=10)),
+                depends_on=[tests["id"]])
     deliverable(omar, migration, "Report mapping", status="in_progress", progress_pct=80, assignee_id=leo["id"],
                 due_date=str(today - timedelta(days=5)))
     deliverable(mia, mobile, "Prototype", status="in_progress", progress_pct=40, assignee_id=eli["id"],
