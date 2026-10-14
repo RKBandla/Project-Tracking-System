@@ -261,6 +261,9 @@ tfplan
 # synced shared code (bin/start-dev.sh, bin/sync-shared.sh). Only track sources.
 backend/*/*
 !backend/*/function.py
+!backend/*/*_controller.py
+!backend/*/*_model.py
+!backend/*/*_view.py
 !backend/*/requirements.txt
 !backend/_shared/*
 !backend/tests/*

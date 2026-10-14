@@ -56,7 +56,12 @@ TABLES = ("notifications", "audit_log", "time_entries", "deliverable_dependencie
 
 
 def _load_service(name: str):
-    """Import backend/<name>/function.py under a unique module name."""
+    """
+    Import backend/<name>/function.py under a unique module name. The service
+    folder goes on the path (as on Lambda) so it can import its own
+    <name>_controller / _model / _view modules.
+    """
+    sys.path.insert(0, str(BACKEND_DIR / name))
     module_name = "svc_" + name.replace("-", "_")
     spec = importlib.util.spec_from_file_location(module_name, BACKEND_DIR / name / "function.py")
     module = importlib.util.module_from_spec(spec)
