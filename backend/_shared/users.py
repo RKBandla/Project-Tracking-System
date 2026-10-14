@@ -26,6 +26,38 @@ def get_user_by_email(cur, email: str) -> dict | None:
     return cur.fetchone()
 
 
+def get_users_by_name(cur, full_name: str) -> list[dict]:
+    """Fetch every user whose "first last" name matches (case-insensitive, spaces collapsed)."""
+    cur.execute(USER_SELECT + " WHERE lower(u.first_name || ' ' || u.last_name) = %s ORDER BY u.id",
+                [" ".join(full_name.lower().split())])
+    return cur.fetchall()
+
+
+def _letters(text: str) -> str:
+    """Lower-case letters and digits only ("O'Neil" -> "oneil")."""
+    return "".join(c for c in text.lower() if c.isalnum())
+
+
+def email_matches_name(email: str, first_name: str, last_name: str) -> bool:
+    """
+    The part before @ must be the full name or the initials. Dots, dashes and
+    underscores are ignored, so Eli Engineer may use eli.engineer@, eliengineer@ or ee@.
+    """
+    local = _letters(email.split("@", 1)[0])
+    first, last = _letters(first_name), _letters(last_name)
+    if not first or not last:
+        return False
+    return local in (first + last, first[0] + last[0])
+
+
+def email_rule_hint(first_name: str, last_name: str) -> str:
+    """Error message showing the allowed forms for this person's email."""
+    first, last = _letters(first_name), _letters(last_name)
+    if not first or not last:
+        return "must be made from the first and last name"
+    return f"must be the full name or the initials, e.g. {first}.{last}@… or {first[0]}{last[0]}@…"
+
+
 def can_view_salary(viewer: dict, user: dict) -> bool:
     """Admins see all salaries, managers see their direct reports', users see their own."""
     return (

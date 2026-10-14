@@ -18,7 +18,7 @@ Local:  Vite :3000 ─► proxy :3001 ─► LocalStack Lambdas ─► local Pos
 
 | Requirement | How |
 |---|---|
-| Authentication and authorization | Log in with email and password; signed JWT that expires (1 h, refreshable for 7 days); passwords hashed (PBKDF2) |
+| Authentication and authorization | Log in with a username (first and last name) or email, and a password; signed JWT that expires (1 h, refreshable for 7 days); passwords hashed (PBKDF2) |
 | Role-based access control | Admin, Manager, Employee — the server checks the role on every request |
 | CRUD for projects | Create, view, edit, archive and reactivate |
 | CRUD for deliverables | Same, per project, plus "depends on" links between deliverables |
@@ -54,6 +54,7 @@ Nobody changes their own role or salary.
 6. **Only approved hours count as consumed.**
 7. **Every change is recorded.** Each create, edit or archive writes one audit-log row, and everyone above the actor in the reporting line gets an in-app notification.
 8. **Another manager's project answers "not found"**, not "forbidden", so ids can't be probed.
+9. **Emails are made from the person's name.** The part before `@` must be the full name or the initials, so Eli Engineer can be `eli.engineer@`, `eliengineer@` or `ee@`. If two people share a name, the password tells them apart; if that's still ambiguous, they sign in with their email.
 
 ## How the money works
 
@@ -84,7 +85,7 @@ Login · Dashboard (status, at-risk with reasons, budget, capacity) · Projects 
 ```
 backend/
   _shared/            shared code, copied into each service as `shared/` by bin/sync-shared.sh
-  auth/               log in with email, refresh, me
+  auth/               log in with username or email, refresh, me
   users/              people, profile (/me), reset-password, weekly workload
   projects/           projects, archive/reactivate, summary, dashboard, at-risk
   project-requests/   manager requests, admin approve/reject
@@ -107,7 +108,7 @@ All endpoints take and return JSON and require `Authorization: Bearer <access to
 
 | Service | Routes |
 |---|---|
-| `/api/auth` | `POST /login`, `POST /refresh`, `GET /me` |
+| `/api/auth` | `POST /login` (`{login, password}` where `login` is "First Last" or an email), `POST /refresh`, `GET /me` |
 | `/api/users` | `GET /`, `POST /`, `GET|PUT /me`, `GET|PUT /{id}`, `POST /{id}/reset-password`, `GET /{id}/workload` |
 | `/api/projects` | `GET /`, `POST /`, `GET /dashboard`, `GET|PUT /{id}`, `POST /{id}/archive`, `POST /{id}/reactivate`, `GET /{id}/summary` |
 | `/api/project-requests` | `GET /`, `POST /`, `GET|PUT /{id}`, `POST /{id}/withdraw`, `POST /{id}/approve`, `POST /{id}/reject` |

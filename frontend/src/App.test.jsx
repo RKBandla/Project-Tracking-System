@@ -4,28 +4,28 @@ import { USERS } from './test/mockApi';
 import { dashboard, renderApp } from './test/renderApp';
 
 describe('authentication', () => {
-  it('shows the login page when signed out and signs in with email', async () => {
+  it('shows the login page when signed out and signs in with a username or email', async () => {
     const { user, fetchMock } = renderApp({
       routes: {
         'POST /api/auth/login': ({ body }) => (body.password === 'abc123'
           ? { access_token: 'a', refresh_token: 'r', user: USERS.manager }
-          : { status: 401, body: { error: { message: 'Invalid email or password' } } }),
+          : { status: 401, body: { error: { message: 'Invalid username, email or password' } } }),
         'GET /api/projects/dashboard': dashboard('manager'),
       },
     });
 
     expect(screen.getByRole('heading', { name: 'Sign in' })).toBeInTheDocument();
-    await user.type(screen.getByLabelText(/Email/), 'max@x.com');
+    await user.type(screen.getByLabelText(/Username or email/), 'Max Manager');
     await user.type(screen.getByLabelText(/Password/), 'wrong1');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
-    expect(await screen.findByText('Invalid email or password')).toBeInTheDocument();
+    expect(await screen.findByText('Invalid username, email or password')).toBeInTheDocument();
 
     await user.clear(screen.getByLabelText(/Password/));
     await user.type(screen.getByLabelText(/Password/), 'abc123');
     await user.click(screen.getByRole('button', { name: 'Sign in' }));
     expect(await screen.findByRole('heading', { name: 'Welcome back, Max' })).toBeInTheDocument();
     const loginCall = fetchMock.mock.calls.findLast(([url]) => url.endsWith('/api/auth/login'));
-    expect(JSON.parse(loginCall[1].body)).toEqual({ email: 'max@x.com', password: 'abc123' });
+    expect(JSON.parse(loginCall[1].body)).toEqual({ login: 'Max Manager', password: 'abc123' });
   });
 
   it('signs out', async () => {

@@ -11,6 +11,10 @@ Routes (relative to /api/users):
     POST /{id}/reset-password    generate a new 6-char password (admin)
     GET  /{id}/workload          booked hours per week and assignments
 
+Emails must be made from the person's name: the full name or the initials
+(Eli Engineer -> eli.engineer@, eliengineer@ or ee@). Checked whenever the
+name or email is set or changed.
+
 Users are never deleted; admins deactivate them with ``is_active: false``.
 Salaries are whole cents and visible to admins, the person's manager and the person.
 """
@@ -26,7 +30,7 @@ from shared.query import Filters, choice_param, date_param, int_param, order_by,
 from shared.rbac import ADMIN, EMPLOYEE, MANAGER, require_role
 from shared.rules import MAX_WEEKLY_HOURS, weekly_load
 from shared.schema import ROLES
-from shared.users import get_user, next_employee_id, serialize_user
+from shared.users import email_matches_name, email_rule_hint, get_user, next_employee_id, serialize_user
 from shared.validation import Field, validate
 
 router = Router()
@@ -78,6 +82,17 @@ def _can_view(viewer: dict, user: dict) -> bool:
     return viewer["role"] in (ADMIN, MANAGER) or viewer["id"] == user["id"]
 
 
+def _check_email(current: dict | None, data: dict) -> None:
+    """Refuse an email that isn't the full name or initials, when the name or email changes."""
+    current = current or {}
+    if current and not any(k in data and data[k] != current.get(k) for k in PROFILE_FIELDS):
+        return
+    merged = {k: data.get(k, current.get(k)) or "" for k in PROFILE_FIELDS}
+    if not email_matches_name(merged["email"], merged["first_name"], merged["last_name"]):
+        raise bad_request("Validation failed",
+                          {"email": email_rule_hint(merged["first_name"], merged["last_name"])})
+
+
 def _check_manager(cur, manager_id: int | None, user_id: int | None = None) -> None:
     """Validate a manager reference: active manager/admin, not self, no reporting cycle."""
     if manager_id is None:
@@ -127,6 +142,7 @@ def create_user(request: Request, cur) -> dict:
     admin = request.user
     require_role(admin, ADMIN)
     data = validate(request.body, USER_SCHEMA)
+    _check_email(None, data)
     _check_manager(cur, data["manager_id"])
     password = generate_password()
     employee_id = next_employee_id(cur)
@@ -163,6 +179,7 @@ def update_me(request: Request, cur) -> dict:
     if not data:
         raise bad_request("Nothing to update")
     me = request.user
+    _check_email(me, data)
     changes = audit.diff(me, data)
     if changes:
         assignments = ", ".join(f"{name} = %s" for name in data)
@@ -201,6 +218,7 @@ def update_user(request: Request, cur) -> dict:
             raise forbidden("Nobody can change their own salary")
         if data.get("is_active") is False:
             raise conflict("You cannot deactivate your own account")
+    _check_email(user, data)
     if "manager_id" in data:
         _check_manager(cur, data["manager_id"], user_id)
 

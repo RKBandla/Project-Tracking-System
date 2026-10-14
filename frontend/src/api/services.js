@@ -16,7 +16,7 @@ function crud(service) {
 const post = (service, path, body) => request(service, path, { method: 'POST', body });
 
 export const authApi = {
-  login: (email, password) => request('auth', '/login', { method: 'POST', body: { email, password }, auth: false }),
+  login: (login, password) => request('auth', '/login', { method: 'POST', body: { login, password }, auth: false }),
   me: () => request('auth', '/me'),
 };
 

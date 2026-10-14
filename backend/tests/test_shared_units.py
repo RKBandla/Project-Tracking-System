@@ -11,7 +11,7 @@ from shared import auth
 from shared.errors import ApiError
 from shared.http import Request, Router, normalise_path, response
 from shared.query import Filters, like_pattern, order_by, pagination
-from shared.users import can_view_salary, serialize_user
+from shared.users import can_view_salary, email_matches_name, email_rule_hint, serialize_user
 from shared.validation import Field, check_date_range, validate
 
 
@@ -194,6 +194,25 @@ class TestHttp:
         res = response(200, {"d": Decimal("1.50"), "t": date(2026, 1, 2)})
         assert res["body"] == '{"d": 1.5, "t": "2026-01-02"}'
         assert "body" not in response(204)
+
+
+class TestEmailRule:
+    @pytest.mark.parametrize("email", ["eli.engineer@x.com", "eliengineer@x.com", "Eli-Engineer@x.com",
+                                       "ee@x.com", "e.e@x.com"])
+    def test_allowed(self, email):
+        assert email_matches_name(email, "Eli", "Engineer")
+
+    @pytest.mark.parametrize("email", ["eli@x.com", "engineer.eli@x.com", "ee1@x.com", "bob@x.com"])
+    def test_refused(self, email):
+        assert not email_matches_name(email, "Eli", "Engineer")
+
+    def test_names_with_spaces_and_punctuation(self):
+        assert email_matches_name("maryann.oneil@x.com", "Mary Ann", "O'Neil")
+        assert email_matches_name("mo@x.com", "Mary Ann", "O'Neil")
+        assert not email_matches_name("x@x.com", "", "Neil")
+        assert email_rule_hint("Mary Ann", "O'Neil") == \
+            "must be the full name or the initials, e.g. maryann.oneil@… or mo@…"
+        assert email_rule_hint("", "") == "must be made from the first and last name"
 
 
 class TestUserSerialisation:

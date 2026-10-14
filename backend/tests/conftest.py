@@ -157,10 +157,12 @@ def make_user(api, admin):  # pylint: disable=redefined-outer-name
     def factory(role: str = "employee", manager_id: int | None = None, **extra) -> dict:
         counter["n"] += 1
         n = counter["n"]
+        first, last = extra.pop("first_name", f"First{n}"), extra.pop("last_name", f"Last{n}")
+        default_email = f"{first}.{last}@example.com".lower().replace(" ", "")  # emails follow the name
         body = {
-            "first_name": extra.pop("first_name", f"First{n}"),
-            "last_name": extra.pop("last_name", f"Last{n}"),
-            "email": extra.pop("email", f"user{n}@example.com"),
+            "first_name": first,
+            "last_name": last,
+            "email": extra.pop("email", default_email),
             "job_title": extra.pop("job_title", "Engineer"),
             "salary_cents": extra.pop("salary_cents", 10_400_000),  # $104,000 -> $50/h
             "role": role,
