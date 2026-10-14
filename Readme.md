@@ -102,6 +102,22 @@ bin/                  start-dev.sh, deploy-backend.sh, deploy-frontend.sh, sync-
 
 Each folder under `backend/` with a `requirements.txt` becomes a Lambda named `coding-workshop-<folder>-<app id>` and is served at `/api/<folder>`.
 
+### MVC inside each service
+
+Everything about one feature lives in its folder, split into Model, View and Controller files
+(named after the feature so they're easy to find with Ctrl+P):
+
+```
+backend/users/
+  function.py           AWS Lambda entry point only (AWS looks for this name)
+  users_controller.py   CONTROLLER: routes - check the request and the rules, call the model, return a view
+  users_model.py        MODEL: every SQL query for this feature
+  users_view.py         VIEW: the JSON sent back
+```
+
+`backend/_shared/` holds what every feature uses: the tables (`schema.py`), the database connection, login
+tokens, role checks (`rbac.py`), the 40-hour rule, cost and risk SQL, validation and the audit log.
+
 ## API
 
 All endpoints take and return JSON and require `Authorization: Bearer <access token>` except login and refresh. List endpoints accept `q` (search), resource-specific filters, `sort` (`field` or `-field`), `page` and `page_size`, and return `{items, total, page, page_size}`. Errors share one shape: `{"error": {"code", "message", "details"}}` with 400/401/403/404/405/409/500.
@@ -151,7 +167,7 @@ After changing backend code, run `./bin/sync-shared.sh` (LocalStack hot-reloads 
 # Backend: unit + integration tests against a local PostgreSQL database "pts_test"
 python3.13 -m venv .venv && .venv/bin/pip install -r backend/requirements-dev.txt
 cd backend && ../.venv/bin/python -m pytest --cov=. --cov-report=term-missing
-../.venv/bin/bandit _shared/*.py */function.py
+../.venv/bin/bandit -q _shared/*.py */function.py */*_controller.py */*_model.py */*_view.py
 
 # Frontend: Vitest + Testing Library, ESLint, production build
 cd frontend && npm install && npm run lint && npm test && npm run build
